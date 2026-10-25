@@ -21,10 +21,6 @@
 </head>
 <body>
 <h1>Jeu Simon</h1>
-<p>Écoute la séquence, puis répète-la : avec les 4 flèches du clavier, en touchant les cases, ou en glissant le doigt vers le haut, la gauche, la droite ou le bas. Comme le jeu classique, la partie se gagne quand tu réussis la séquence de 32 sons.</p>
-<p id="score" aria-live="polite"></p>
-<p id="statut" aria-live="polite">Appuie sur Entrée ou sur Commencer pour jouer.</p>
-<p><button id="btn-test">Tester le son</button> Si tu n'entends pas les sons, appuie d'abord sur Tester le son : tu dois entendre les 4 sons, dans l'ordre haut, droite, bas, gauche.</p>
 <div class="grille">
   <button class="case" id="btn-haut" aria-label="Haut">↑<br>Haut</button>
   <button class="case" id="btn-gauche" aria-label="Gauche">←<br>Gauche</button>
@@ -32,7 +28,11 @@
   <button class="case" id="btn-droite" aria-label="Droite">→<br>Droite</button>
   <button class="case" id="btn-bas" aria-label="Bas">↓<br>Bas</button>
 </div>
-<p>Chaque son a sa direction : aigu pour le haut, puis la droite, le bas, et le plus grave pour la gauche. Le jeu accélère au fil des manches.</p>
+<p><button id="btn-test">Tester le son</button> Tu dois entendre les 4 sons, dans l'ordre haut, droite, bas, gauche.</p>
+<p id="score"></p>
+<p id="statut">Appuie sur Entrée ou sur Commencer pour jouer.</p>
+<p>Écoute la séquence, puis répète-la : avec les 4 flèches du clavier, en touchant les cases, ou en glissant le doigt vers le haut, la gauche, la droite ou le bas. Comme le jeu classique, la partie se gagne quand tu réussis la séquence de 32 sons. Le jeu accélère au fil des manches, et il n'y a pas de limite de temps pour répondre.</p>
+<p>Avec VoiceOver : les glissés ne fonctionnent pas, car VoiceOver les utilise pour naviguer. Déplace plutôt le focus d'un bouton à l'autre en balayant vers la gauche ou la droite, puis touche deux fois pour choisir la direction. Il n'y a aucune voix dans le jeu, seulement les sons : chaque son a sa direction, le plus aigu pour le haut, puis la droite, le bas, et le plus grave pour la gauche. Un son grave et long veut dire que tu t'es trompé, et une petite mélodie veut dire que tu as gagné.</p>
 <script>
 var MAX_SEQUENCE = 32;      // victoire à la séquence de 32, comme le Simon classique
 var SEUIL_GLISSER = 30;     // distance minimale d'un glisser, en pixels
@@ -114,18 +114,10 @@ var manche = 0;
 var enLecture = false;   // la séquence est en train de jouer : les touches sont ignorées
 var enPartie = false;
 
-function annoncer(texte) {
+// Le statut est affiché en texte seulement, sans voix et sans annonce
+// automatique : rien ne doit couvrir les sons du jeu.
+function afficherStatut(texte) {
   document.getElementById("statut").textContent = texte;
-  if (window.speechSynthesis) {
-    speechSynthesis.cancel();
-    // Sur iPhone, un message parlé juste après un cancel() peut être perdu :
-    // on laisse un petit délai avant de parler.
-    setTimeout(function () {
-      var msg = new SpeechSynthesisUtterance(texte);
-      msg.lang = "fr-FR";
-      speechSynthesis.speak(msg);
-    }, 100);
-  }
 }
 function afficherScore() {
   document.getElementById("score").textContent =
@@ -150,7 +142,6 @@ function jouerSequence() {
     } else {
       enLecture = false;
       indexJoueur = 0;
-      annoncer("À toi de jouer.");
     }
   }
   etape();
@@ -160,7 +151,7 @@ function mancheSuivante() {
   enLecture = true;  // les touches sont ignorées jusqu'à la fin de la lecture
   sequence.push(DIRECTIONS[Math.floor(Math.random() * DIRECTIONS.length)]);
   afficherScore();
-  annoncer("Manche " + manche + ". Écoute.");
+  afficherStatut("Manche " + manche + ". Écoute la séquence.");
   setTimeout(jouerSequence, 900);
 }
 function demarrer() {
@@ -184,10 +175,10 @@ function partieTerminee(gagnee) {
   afficherScore();
   if (gagnee) {
     sonVictoire();
-    annoncer("Bravo ! Tu as réussi la séquence de 32. Tu as gagné ! Appuie sur Entrée pour rejouer.");
+    afficherStatut("Tu as réussi la séquence de 32. Tu as gagné ! Appuie sur Entrée pour rejouer.");
   } else {
     sonErreur();
-    annoncer("Erreur. Tu as réussi " + scoreFinal + " manches. Appuie sur Entrée pour rejouer.");
+    afficherStatut("Erreur. Tu as réussi " + scoreFinal + " manches. Appuie sur Entrée pour rejouer.");
   }
 }
 function entrerDirection(id) {
@@ -213,7 +204,6 @@ DIRECTIONS.forEach(function (dir) {
 document.getElementById("btn-centre").addEventListener("click", demarrer);
 document.getElementById("btn-test").addEventListener("click", function () {
   deverrouillerAudio();
-  annoncer("Test du son : haut, droite, bas, gauche.");
   DIRECTIONS.forEach(function (dir, i) {
     setTimeout(function () { allumer(dir, 400); }, i * 600);
   });
