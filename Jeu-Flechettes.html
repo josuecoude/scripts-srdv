@@ -9,7 +9,7 @@
   h1 { font-size: 1.6em; }
   button { cursor: pointer; border-radius: .5em; }
   button:focus { outline: .25em solid #000; }
-  #btn-commencer { background: #1a1a1a; color: #fff; font-size: 2em; width: 90%; padding: 1.2em .5em; border: .15em solid #222; }
+  #choix-niveaux button { background: #1a1a1a; color: #fff; font-size: 1.8em; width: 90%; padding: 1em .5em; border: .15em solid #222; margin: .3em 0; }
   #btn-lancer { background: #c82a2a; color: #fff; font-size: 2.4em; width: 95%; height: 55vh; min-height: 14em; border: .15em solid #222; display: none; text-shadow: 0 0 .2em #000; }
   #score, #statut { font-size: 1.15em; min-height: 1.4em; }
 </style>
@@ -17,14 +17,25 @@
 <body>
 <h1>Fléchettes</h1>
 <p id="score"></p>
-<p id="statut">Appuie sur Commencer pour jouer.</p>
-<button id="btn-commencer">Commencer</button>
+<p id="statut">Choisis un niveau pour jouer.</p>
+<div id="choix-niveaux">
+<button id="btn-niveau-facile">Facile</button>
+<button id="btn-niveau-moyen">Moyen</button>
+<button id="btn-niveau-difficile">Difficile</button>
+</div>
 <button id="btn-lancer" aria-label="Lancer la fléchette">Lancer</button>
-<p>Un son traverse de gauche à droite, ou de droite à gauche, à des vitesses variées. Quand tu crois que le son est juste au centre, devant toi, lance ta fléchette : plus tu es près du centre, plus tu as de points. Centre parfait : 100 points. Très près : 50 points. Près : 25 points. Loin : 10 points. Si tu laisses passer le son sans lancer, la fléchette est manquée : 0 point.</p>
-<p>Pour lancer : tape n'importe où sur l'écran avec 1 doigt, ou appuie sur la barre d'espace, Entrée, ou clique n'importe où sur l'ordinateur. Avec VoiceOver : le focus est mis sur le gros bouton Lancer au début de chaque vol, et un double-toucher n'importe où lance la fléchette. 10 fléchettes par partie. Pour bien entendre le son aller de gauche à droite, utilise des écouteurs ou un casque : le stéréo s'entend presque pas sur le haut-parleur du téléphone.</p>
+<p>Un son traverse de gauche à droite, ou de droite à gauche. Quand tu crois que le son est juste au centre, devant toi, lance ta fléchette : plus tu es près du centre, plus tu as de points. Centre parfait : 100 points. Très près : 50 points. Près : 25 points. Loin : 10 points. Si tu laisses passer le son sans lancer, la fléchette est manquée : 0 point.</p>
+<p>Trois niveaux de difficulté, selon la vitesse du son : facile, traversée lente de 5 à 8 secondes ; moyen, 3 à 6 secondes ; difficile, vraiment très vite, 1 à 2 secondes.</p>
+<p>Pour lancer : tape n'importe où sur l'écran avec 1 doigt, ou appuie sur la barre d'espace, Entrée, ou clique n'importe où sur l'ordinateur. Pour choisir un niveau au clavier : touches 1, 2, 3 pour facile, moyen, difficile. Avec VoiceOver : le focus est mis sur le gros bouton Lancer au début de chaque vol, et un double-toucher n'importe où lance la fléchette. 10 fléchettes par partie. Pour bien entendre le son aller de gauche à droite, utilise des écouteurs ou un casque : le stéréo s'entend presque pas sur le haut-parleur du téléphone.</p>
 <script>
 var NB_FLECHETTES = 10;
 var SCORE_MAX = NB_FLECHETTES * 100;  // 100 points par fléchette au maximum
+// Vitesses de traversée du son, en millisecondes, selon le niveau.
+var NIVEAUX = {
+  facile: { nom: "Facile", min: 5500, max: 8000 },
+  moyen: { nom: "Moyen", min: 3500, max: 6500 },
+  difficile: { nom: "Difficile", min: 1000, max: 2000 }
+};
 var CLE_MEILLEUR = "jeuFlechettesMeilleur";
 var FREQ_VOL = 520;  // son continu pendant le vol de la fléchette
 
@@ -69,7 +80,8 @@ function parler(texte, apres) {
 
 var meilleur = 0;
 try { meilleur = parseInt(localStorage.getItem(CLE_MEILLEUR) || "0", 10) || 0; } catch (e) {}
-var etat = "accueil";  // accueil, vol, resultat, fin
+var etat = "accueil";  // accueil, demarrage, vol, resultat, fin
+var niveauCourant = "moyen";
 var flechette = 0;
 var score = 0;
 var oscVol = null;
@@ -83,7 +95,7 @@ var panDepart = -1;   // côté d'où part le son
 
 function afficherScore() {
   document.getElementById("score").textContent =
-    "Fléchette " + flechette + " sur " + NB_FLECHETTES + ". Score : " + score + ". Meilleur : " + meilleur + ".";
+    "Niveau " + NIVEAUX[niveauCourant].nom.toLowerCase() + ". Fléchette " + flechette + " sur " + NB_FLECHETTES + ". Score : " + score + ". Meilleur : " + meilleur + ".";
 }
 // Le statut est affiché en texte seulement, sans annonce automatique :
 // la voix annonce déjà les résultats, on ne veut pas de double annonce.
@@ -91,7 +103,7 @@ function afficherStatut(texte) {
   document.getElementById("statut").textContent = texte;
 }
 function afficherBoutons() {
-  document.getElementById("btn-commencer").style.display = (etat === "accueil" || etat === "fin") ? "" : "none";
+  document.getElementById("choix-niveaux").style.display = (etat === "accueil" || etat === "fin") ? "" : "none";
   document.getElementById("btn-lancer").style.display = (etat === "vol") ? "" : "none";
 }
 // Panoramique équilibré : à gauche tout à gauche, au centre égal des deux côtés.
@@ -115,7 +127,8 @@ function demarrerVol() {
   if (!ctx) return;
   sensVol = Math.random() < 0.5 ? 1 : -1;
   panDepart = -sensVol;
-  dureeVol = 3500 + Math.random() * 3000;  // de 3,5 à 6,5 secondes, vitesse variée
+  var niv = NIVEAUX[niveauCourant];
+  dureeVol = niv.min + Math.random() * (niv.max - niv.min);
   debutVol = Date.now();
   var merger = ctx.createChannelMerger(2);
   merger.connect(ctx.destination);
@@ -197,31 +210,36 @@ function finPartie() {
     try { localStorage.setItem(CLE_MEILLEUR, String(meilleur)); } catch (e) {}
   }
   afficherScore();
-  afficherStatut("Partie terminée. Score : " + score + " points sur " + SCORE_MAX + ".");
-  document.getElementById("btn-commencer").textContent = "Rejouer";
+  afficherStatut("Partie terminée. Score : " + score + " points sur " + SCORE_MAX + ". Choisis un niveau pour rejouer.");
   afficherBoutons();
   var message = "Partie terminée. Ton score est de " + score + " points sur " + SCORE_MAX + ".";
   if (nouveauRecord) message += " Nouveau record !";
   else if (meilleur > 0) message += " Ton record est de " + meilleur + " points.";
+  message += " Choisis un niveau pour rejouer.";
   parler(message);
 }
-function demarrer() {
-  if (etat === "vol" || etat === "resultat") return;
+function demarrer(niveau) {
+  if (niveau) niveauCourant = niveau;
+  if (etat === "vol" || etat === "resultat" || etat === "demarrage") return;
+  etat = "demarrage";
   audio();
   deverrouillerAudio();
   flechette = 0;
   score = 0;
   afficherScore();
-  // « C'est parti » est parlé dans le geste d'appui sur Commencer : ça
+  afficherBoutons();
+  // « C'est parti » est parlé dans le geste d'appui sur le niveau : ça
   // déverrouille la voix sur iPhone avant la première fléchette.
-  parler("C'est parti.", dartSuivant);
+  parler("C'est parti, niveau " + NIVEAUX[niveauCourant].nom.toLowerCase() + ".", dartSuivant);
 }
 
-document.getElementById("btn-commencer").addEventListener("click", function (ev) {
-  // Le clic ne doit pas remonter jusqu'au lancer : sinon, appuyer sur Commencer
-  // lancerait aussitôt la première fléchette.
-  ev.stopPropagation();
-  demarrer();
+["facile", "moyen", "difficile"].forEach(function (niveau) {
+  document.getElementById("btn-niveau-" + niveau).addEventListener("click", function (ev) {
+    // Le clic ne doit pas remonter jusqu'au lancer : sinon, choisir un niveau
+    // lancerait aussitôt la première fléchette.
+    ev.stopPropagation();
+    demarrer(niveau);
+  });
 });
 document.getElementById("btn-lancer").addEventListener("click", function (ev) {
   ev.stopPropagation();
@@ -238,6 +256,10 @@ document.addEventListener("keydown", function (ev) {
   if (ev.key === " " || ev.key === "Enter") {
     if (etat === "vol") { lancer(); ev.preventDefault(); }
     else if (etat === "accueil" || etat === "fin") { demarrer(); ev.preventDefault(); }
+  } else if (etat === "accueil" || etat === "fin") {
+    if (ev.key === "1") demarrer("facile");
+    else if (ev.key === "2") demarrer("moyen");
+    else if (ev.key === "3") demarrer("difficile");
   }
 });
 afficherScore();
