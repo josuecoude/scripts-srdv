@@ -24,6 +24,7 @@
 <p>Écoute la séquence, puis répète-la : avec les 4 flèches du clavier, en touchant les cases, ou en glissant le doigt vers le haut, la gauche, la droite ou le bas. Comme le jeu classique, la partie se gagne quand tu réussis la séquence de 32 sons.</p>
 <p id="score" aria-live="polite"></p>
 <p id="statut" aria-live="polite">Appuie sur Entrée ou sur Commencer pour jouer.</p>
+<p><button id="btn-test">Tester le son</button> Si tu n'entends pas les sons, appuie d'abord sur Tester le son : tu dois entendre les 4 sons, dans l'ordre haut, droite, bas, gauche.</p>
 <div class="grille">
   <button class="case" id="btn-haut" aria-label="Haut">↑<br>Haut</button>
   <button class="case" id="btn-gauche" aria-label="Gauche">←<br>Gauche</button>
@@ -71,9 +72,19 @@ function audio() {
   if (contexteAudio && contexteAudio.state === "suspended") contexteAudio.resume();
   return contexteAudio;
 }
-function jouerSon(freq, dureeMs) {
+// Sur iPhone, le son du navigateur est verrouillé tant qu'il n'a pas été
+// déverrouillé par un geste. Avec VoiceOver, l'activation d'un bouton ne
+// déverrouille pas toujours le son : on réessaie donc à chaque interaction,
+// et chaque son qui tombe sur un contexte encore suspendu est rejoué un peu plus tard.
+function deverrouillerAudio() { audio(); }
+function jouerSon(freq, dureeMs, dejaReporte) {
   var ctx = audio();
   if (!ctx) return;
+  if (ctx.state === "suspended") {
+    ctx.resume();
+    if (!dejaReporte) setTimeout(function () { jouerSon(freq, dureeMs, true); }, 200);
+    return;
+  }
   var osc = ctx.createOscillator();
   var gain = ctx.createGain();
   osc.type = "square";
@@ -107,9 +118,13 @@ function annoncer(texte) {
   document.getElementById("statut").textContent = texte;
   if (window.speechSynthesis) {
     speechSynthesis.cancel();
-    var msg = new SpeechSynthesisUtterance(texte);
-    msg.lang = "fr-FR";
-    speechSynthesis.speak(msg);
+    // Sur iPhone, un message parlé juste après un cancel() peut être perdu :
+    // on laisse un petit délai avant de parler.
+    setTimeout(function () {
+      var msg = new SpeechSynthesisUtterance(texte);
+      msg.lang = "fr-FR";
+      speechSynthesis.speak(msg);
+    }, 100);
   }
 }
 function afficherScore() {
@@ -150,6 +165,8 @@ function mancheSuivante() {
 }
 function demarrer() {
   audio();
+  deverrouillerAudio();
+  jouerSon(660, 150);  // petit bip de départ, joué dans le geste : il confirme que le son fonctionne
   sequence = [];
   manche = 0;
   enPartie = true;
@@ -194,6 +211,17 @@ DIRECTIONS.forEach(function (dir) {
   document.getElementById(dir.bouton).addEventListener("click", function () { entrerDirection(dir.id); });
 });
 document.getElementById("btn-centre").addEventListener("click", demarrer);
+document.getElementById("btn-test").addEventListener("click", function () {
+  deverrouillerAudio();
+  annoncer("Test du son : haut, droite, bas, gauche.");
+  DIRECTIONS.forEach(function (dir, i) {
+    setTimeout(function () { allumer(dir, 400); }, i * 600);
+  });
+});
+// Chaque interaction tente de déverrouiller le son du navigateur.
+["pointerdown", "touchstart", "click", "keydown"].forEach(function (ev) {
+  document.addEventListener(ev, deverrouillerAudio, true);
+});
 document.addEventListener("keydown", function (ev) {
   var touches = { ArrowUp: "haut", ArrowDown: "bas", ArrowLeft: "gauche", ArrowRight: "droite" };
   if (touches[ev.key]) { entrerDirection(touches[ev.key]); ev.preventDefault(); }
