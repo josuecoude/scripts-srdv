@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fléchettes — inspiré de Crazy Darts</title>
+<style>
+  body { font-family: sans-serif; max-width: 40em; margin: 1em auto; padding: 0 1em; text-align: center; }
+  h1 { font-size: 1.6em; }
+  button { cursor: pointer; border-radius: .5em; }
+  button:focus { outline: .25em solid #000; }
+  #btn-commencer { background: #1a1a1a; color: #fff; font-size: 2em; width: 90%; padding: 1.2em .5em; border: .15em solid #222; }
+  #btn-lancer { background: #c82a2a; color: #fff; font-size: 2.4em; width: 95%; height: 55vh; min-height: 14em; border: .15em solid #222; display: none; text-shadow: 0 0 .2em #000; }
+  #score, #statut { font-size: 1.15em; min-height: 1.4em; }
+</style>
+</head>
+<body>
+<h1>Fléchettes</h1>
+<p id="score"></p>
+<p id="statut">Appuie sur Commencer pour jouer.</p>
+<button id="btn-commencer">Commencer</button>
+<button id="btn-lancer" aria-label="Lancer la fléchette">Lancer</button>
+<p>Un son traverse de gauche à droite, ou de droite à gauche, à des vitesses variées. Quand tu crois que le son est juste au centre, devant toi, lance ta fléchette : plus tu es près du centre, plus tu as de points. Centre parfait : 100 points. Très près : 50 points. Près : 25 points. Loin : 10 points. Si tu laisses passer le son sans lancer, la fléchette est manquée : 0 point.</p>
+<p>Pour lancer : tape n'importe où sur l'écran avec 1 doigt, ou appuie sur la barre d'espace, Entrée, ou clique n'importe où sur l'ordinateur. Avec VoiceOver : le focus est mis sur le gros bouton Lancer au début de chaque vol, et un double-toucher n'importe où lance la fléchette. 10 fléchettes par partie. Pour bien entendre le son aller de gauche à droite, utilise des écouteurs ou un casque : le stéréo s'entend presque pas sur le haut-parleur du téléphone.</p>
+<script>
+var NB_FLECHETTES = 10;
+var CLE_MEILLEUR = "jeuFlechettesMeilleur";
+var FREQ_VOL = 520;  // son continu pendant le vol de la fléchette
+
+// Points selon la distance au centre (pan de -1 à gauche à 1 à droite, 0 = centre).
+function pointsPour(pan) {
+  var d = Math.abs(pan);
+  if (d <= 0.1) return { points: 100, zone: "Centre parfait" };
+  if (d <= 0.3) return { points: 50, zone: "Très près" };
+  if (d <= 0.6) return { points: 25, zone: "Près" };
+  return { points: 10, zone: "Loin" };
+}
+
+var contexteAudio = null;
+function audio() {
+  if (!contexteAudio) {
+    var AC = window.AudioContext || window.webkitAudioContext;
+    if (AC) contexteAudio = new AC();
+  }
+  if (contexteAudio && contexteAudio.state === "suspended") contexteAudio.resume();
+  return contexteAudio;
+}
+// Sur iPhone, le son du navigateur est verrouillé tant qu'il n'a pas été
+// déverrouillé par un geste : on réessaie donc à chaque interaction.
+function deverrouillerAudio() { audio(); }
+
+// Voix utilisée pour les résultats et le score final, jamais pendant le vol
+// (elle couvrirait le son qui traverse). Si la voix ne répond pas, on continue
+// quand même après 2,5 secondes.
+function parler(texte, apres) {
+  if (!window.speechSynthesis) { if (apres) apres(); return; }
+  speechSynthesis.cancel();
+  // Sur iPhone, un message parlé juste après un cancel() peut être perdu :
+  // on laisse un petit délai avant de parler.
+  setTimeout(function () {
+    var msg = new SpeechSynthesisUtterance(texte);
+    msg.lang = "fr-FR";
+    var fait = false;
+    function suite() { if (!fait) { fait = true; if (apres) apres(); } }
+    msg.onend = suite;
+    setTimeout(suite, 2500);
+    speechSynthesis.speak(msg);
+  }, 100);
+}
+
+var meilleur = 0;
+try { meilleur = parseInt(localStorage.getItem(CLE_MEILLEUR) || "0", 10) || 0; } catch (e) {}
+var etat = "accueil";  // accueil, vol, resultat, fin
+var flechette = 0;
+var score = 0;
+var oscVol = null;
+var gainGauche = null;
+var gainDroit = null;
+var intervalVol = null;
+var debutVol = 0;
+var dureeVol = 0;
+var sensVol = 1;      // 1 : de gauche à droite, -1 : de droite à gauche
+var panDepart = -1;   // côté d'où part le son
+
+function afficherScore() {
+  document.getElementById("score").textContent =
+    "Fléchette " + flechette + " sur " + NB_FLECHETTES + ". Score : " + score + ". Meilleur : " + meilleur + ".";
+}
+// Le statut est affiché en texte seulement, sans annonce automatique :
+// la voix annonce déjà les résultats, on ne veut pas de double annonce.
+function afficherStatut(texte) {
+  document.getElementById("statut").textContent = texte;
+}
+function afficherBoutons() {
+  document.getElementById("btn-commencer").style.display = (etat === "accueil" || etat === "fin") ? "" : "none";
+  document.getElementById("btn-lancer").style.display = (etat === "vol") ? "" : "none";
+}
+// Panoramique équilibré : à gauche tout à gauche, au centre égal des deux côtés.
+function appliquerPan(pan) {
+  if (!gainGauche || !gainDroit || !contexteAudio) return;
+  var angle = (pan + 1) * Math.PI / 4;
+  gainGauche.gain.setValueAtTime(Math.cos(angle), contexteAudio.currentTime);
+  gainDroit.gain.setValueAtTime(Math.sin(angle), contexteAudio.currentTime);
+}
+function panActuel() {
+  var ecoule = Date.now() - debutVol;
+  if (ecoule >= dureeVol) return sensVol;  // arrivé au bout
+  return panDepart + sensVol * 2 * (ecoule / dureeVol);
+}
+function arreterVol() {
+  if (intervalVol) { clearInterval(intervalVol); intervalVol = null; }
+  if (oscVol) { try { oscVol.stop(); } catch (e) {} oscVol = null; }
+}
+function demarrerVol() {
+  var ctx = audio();
+  if (!ctx) return;
+  sensVol = Math.random() < 0.5 ? 1 : -1;
+  panDepart = -sensVol;
+  dureeVol = 3500 + Math.random() * 3000;  // de 3,5 à 6,5 secondes, vitesse variée
+  debutVol = Date.now();
+  var merger = ctx.createChannelMerger(2);
+  merger.connect(ctx.destination);
+  gainGauche = ctx.createGain();
+  gainDroit = ctx.createGain();
+  gainGauche.connect(merger, 0, 0);
+  gainDroit.connect(merger, 0, 1);
+  oscVol = ctx.createOscillator();
+  oscVol.type = "sine";
+  oscVol.frequency.setValueAtTime(FREQ_VOL, ctx.currentTime);
+  var gainVol = ctx.createGain();
+  gainVol.gain.setValueAtTime(0.08, ctx.currentTime);
+  oscVol.connect(gainVol);
+  gainVol.connect(gainGauche);
+  gainVol.connect(gainDroit);
+  oscVol.start();
+  appliquerPan(panDepart);
+  intervalVol = setInterval(mettreAJourPan, 50);
+}
+function mettreAJourPan() {
+  if (Date.now() - debutVol >= dureeVol) { manquer(); return; }
+  appliquerPan(panActuel());
+}
+function sonImpact() {
+  var ctx = audio();
+  if (!ctx) return;
+  var osc = ctx.createOscillator();
+  var gain = ctx.createGain();
+  osc.type = "square";
+  osc.frequency.setValueAtTime(140, ctx.currentTime);
+  gain.gain.setValueAtTime(0.15, ctx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.15);
+  osc.connect(gain);
+  gain.connect(ctx.destination);
+  osc.start();
+  osc.stop(ctx.currentTime + 0.15);
+}
+function dartSuivant() {
+  if (flechette >= NB_FLECHETTES) { finPartie(); return; }
+  flechette++;
+  etat = "vol";
+  afficherScore();
+  afficherStatut("Fléchette " + flechette + ". Écoute le son traverser.");
+  afficherBoutons();
+  document.getElementById("btn-lancer").focus();
+  demarrerVol();
+}
+function lancer() {
+  if (etat !== "vol") return;
+  etat = "resultat";
+  var pan = panActuel();
+  arreterVol();
+  sonImpact();
+  var resultat = pointsPour(pan);
+  score += resultat.points;
+  afficherScore();
+  afficherStatut(resultat.zone + ", " + resultat.points + " points.");
+  afficherBoutons();
+  parler(resultat.zone + ", " + resultat.points + " points.", function () {
+    setTimeout(dartSuivant, 800);
+  });
+}
+function manquer() {
+  if (etat !== "vol") return;
+  etat = "resultat";
+  arreterVol();
+  afficherScore();
+  afficherStatut("Manqué, 0 point.");
+  afficherBoutons();
+  parler("Manqué, 0 point.", function () {
+    setTimeout(dartSuivant, 800);
+  });
+}
+function finPartie() {
+  etat = "fin";
+  var nouveauRecord = score > 0 && score > meilleur;
+  if (score > meilleur) {
+    meilleur = score;
+    try { localStorage.setItem(CLE_MEILLEUR, String(meilleur)); } catch (e) {}
+  }
+  afficherScore();
+  afficherStatut("Partie terminée. Score : " + score + " points.");
+  document.getElementById("btn-commencer").textContent = "Rejouer";
+  afficherBoutons();
+  var message = "Partie terminée. Ton score est de " + score + " points.";
+  if (nouveauRecord) message += " Nouveau record !";
+  else if (meilleur > 0) message += " Ton record est de " + meilleur + " points.";
+  parler(message);
+}
+function demarrer() {
+  if (etat === "vol" || etat === "resultat") return;
+  audio();
+  deverrouillerAudio();
+  flechette = 0;
+  score = 0;
+  afficherScore();
+  dartSuivant();
+}
+
+document.getElementById("btn-commencer").addEventListener("click", function (ev) {
+  // Le clic ne doit pas remonter jusqu'au lancer : sinon, appuyer sur Commencer
+  // lancerait aussitôt la première fléchette.
+  ev.stopPropagation();
+  demarrer();
+});
+document.getElementById("btn-lancer").addEventListener("click", function (ev) {
+  ev.stopPropagation();
+  lancer();
+});
+// Chaque interaction tente de déverrouiller le son du navigateur.
+["pointerdown", "touchstart", "click", "keydown"].forEach(function (ev) {
+  document.addEventListener(ev, deverrouillerAudio, true);
+});
+// Lancer en tapant n'importe où (toucher ou souris) ou avec le clavier.
+document.addEventListener("touchstart", function () { lancer(); }, { passive: true });
+document.addEventListener("click", function () { lancer(); });
+document.addEventListener("keydown", function (ev) {
+  if (ev.key === " " || ev.key === "Enter") {
+    if (etat === "vol") { lancer(); ev.preventDefault(); }
+    else if (etat === "accueil" || etat === "fin") { demarrer(); ev.preventDefault(); }
+  }
+});
+afficherScore();
+afficherBoutons();
+</script>
+</body>
+</html>
