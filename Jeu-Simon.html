@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Jeu Simon</title>
+<style>
+  body { font-family: sans-serif; max-width: 40em; margin: 1em auto; padding: 0 1em; text-align: center; }
+  h1 { font-size: 1.6em; }
+  .grille { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: .6em; max-width: 26em; margin: 1em auto; }
+  .case { font-size: 1.6em; padding: 1.2em .4em; border: .15em solid #222; border-radius: .5em; cursor: pointer; color: #fff; text-shadow: 0 0 .2em #000; }
+  .case:focus { outline: .25em solid #000; }
+  #btn-haut { grid-column: 2; grid-row: 1; background: #2a8a2a; }
+  #btn-gauche { grid-column: 1; grid-row: 2; background: #2456c8; }
+  #btn-centre { grid-column: 2; grid-row: 2; background: #1a1a1a; font-size: 1.1em; }
+  #btn-droite { grid-column: 3; grid-row: 2; background: #c82a2a; }
+  #btn-bas { grid-column: 2; grid-row: 3; background: #c8a800; }
+  .allume { filter: brightness(1.9); transform: scale(1.05); }
+  #statut, #score { font-size: 1.15em; min-height: 1.4em; }
+</style>
+</head>
+<body>
+<h1>Jeu Simon</h1>
+<p>Écoute la séquence, puis répète-la : avec les 4 flèches du clavier, en touchant les cases, ou en glissant le doigt vers le haut, la gauche, la droite ou le bas. Comme le jeu classique, la partie se gagne quand tu réussis la séquence de 32 sons.</p>
+<p id="score" aria-live="polite"></p>
+<p id="statut" aria-live="polite">Appuie sur Entrée ou sur Commencer pour jouer.</p>
+<div class="grille">
+  <button class="case" id="btn-haut" aria-label="Haut">↑<br>Haut</button>
+  <button class="case" id="btn-gauche" aria-label="Gauche">←<br>Gauche</button>
+  <button class="case" id="btn-centre">Commencer</button>
+  <button class="case" id="btn-droite" aria-label="Droite">→<br>Droite</button>
+  <button class="case" id="btn-bas" aria-label="Bas">↓<br>Bas</button>
+</div>
+<p>Chaque son a sa direction : aigu pour le haut, puis la droite, le bas, et le plus grave pour la gauche. Le jeu accélère au fil des manches.</p>
+<script>
+var MAX_SEQUENCE = 32;      // victoire à la séquence de 32, comme le Simon classique
+var SEUIL_GLISSER = 30;     // distance minimale d'un glisser, en pixels
+var CLE_MEILLEUR = "jeuSimonMeilleur";
+
+// Sons du Simon classique (fréquences d'origine) : haut 415, droite 310, bas 252, gauche 209.
+var DIRECTIONS = [
+  { id: "haut",   nom: "Haut",   freq: 415, bouton: "btn-haut" },
+  { id: "droite", nom: "Droite", freq: 310, bouton: "btn-droite" },
+  { id: "bas",    nom: "Bas",    freq: 252, bouton: "btn-bas" },
+  { id: "gauche", nom: "Gauche", freq: 209, bouton: "btn-gauche" }
+];
+function directionParId(id) {
+  for (var i = 0; i < DIRECTIONS.length; i++) if (DIRECTIONS[i].id === id) return DIRECTIONS[i];
+  return null;
+}
+// Vitesse du jeu : la séquence accélère à mesure que les manches avancent.
+function intervalleManche(manche) {
+  return Math.max(300, 600 - (manche - 1) * 12);
+}
+function dureeSon(manche) {
+  return Math.max(220, 400 - (manche - 1) * 8);
+}
+// Un glisser devient une direction selon l'axe dominant du mouvement.
+function directionDuGlisser(dx, dy) {
+  if (Math.abs(dx) < SEUIL_GLISSER && Math.abs(dy) < SEUIL_GLISSER) return null;
+  if (Math.abs(dx) > Math.abs(dy)) return dx > 0 ? "droite" : "gauche";
+  return dy > 0 ? "bas" : "haut";
+}
+
+var contexteAudio = null;
+function audio() {
+  if (!contexteAudio) {
+    var AC = window.AudioContext || window.webkitAudioContext;
+    if (AC) contexteAudio = new AC();
+  }
+  if (contexteAudio && contexteAudio.state === "suspended") contexteAudio.resume();
+  return contexteAudio;
+}
+function jouerSon(freq, dureeMs) {
+  var ctx = audio();
+  if (!ctx) return;
+  var osc = ctx.createOscillator();
+  var gain = ctx.createGain();
+  osc.type = "square";
+  osc.frequency.setValueAtTime(freq, ctx.currentTime);
+  gain.gain.setValueAtTime(0.08, ctx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + dureeMs / 1000);
+  osc.connect(gain);
+  gain.connect(ctx.destination);
+  osc.start();
+  osc.stop(ctx.currentTime + dureeMs / 1000);
+}
+function sonErreur() { jouerSon(110, 900); }
+function sonVictoire() {
+  var notes = [523, 659, 784, 1047];
+  for (var i = 0; i < notes.length; i++) {
+    (function (freq, delai) {
+      setTimeout(function () { jouerSon(freq, 350); }, delai);
+    })(notes[i], i * 180);
+  }
+}
+
+var meilleur = 0;
+try { meilleur = parseInt(localStorage.getItem(CLE_MEILLEUR) || "0", 10) || 0; } catch (e) {}
+var sequence = [];
+var indexJoueur = 0;
+var manche = 0;
+var enLecture = false;   // la séquence est en train de jouer : les touches sont ignorées
+var enPartie = false;
+
+function annoncer(texte) {
+  document.getElementById("statut").textContent = texte;
+  if (window.speechSynthesis) {
+    speechSynthesis.cancel();
+    var msg = new SpeechSynthesisUtterance(texte);
+    msg.lang = "fr-FR";
+    speechSynthesis.speak(msg);
+  }
+}
+function afficherScore() {
+  document.getElementById("score").textContent =
+    "Manche : " + manche + " sur " + MAX_SEQUENCE + ". Meilleur score : " + meilleur + ".";
+}
+function allumer(dir, dureeMs) {
+  var bouton = document.getElementById(dir.bouton);
+  bouton.classList.add("allume");
+  jouerSon(dir.freq, dureeMs);
+  setTimeout(function () { bouton.classList.remove("allume"); }, dureeMs);
+}
+function jouerSequence() {
+  enLecture = true;
+  var i = 0;
+  var intervalle = intervalleManche(manche);
+  var duree = dureeSon(manche);
+  function etape() {
+    if (i < sequence.length) {
+      allumer(sequence[i], duree);
+      i++;
+      setTimeout(etape, intervalle);
+    } else {
+      enLecture = false;
+      indexJoueur = 0;
+      annoncer("À toi de jouer.");
+    }
+  }
+  etape();
+}
+function mancheSuivante() {
+  manche++;
+  enLecture = true;  // les touches sont ignorées jusqu'à la fin de la lecture
+  sequence.push(DIRECTIONS[Math.floor(Math.random() * DIRECTIONS.length)]);
+  afficherScore();
+  annoncer("Manche " + manche + ". Écoute.");
+  setTimeout(jouerSequence, 900);
+}
+function demarrer() {
+  audio();
+  sequence = [];
+  manche = 0;
+  enPartie = true;
+  document.getElementById("btn-centre").textContent = "Recommencer";
+  mancheSuivante();
+}
+function partieTerminee(gagnee) {
+  enPartie = false;
+  enLecture = false;
+  var scoreFinal = gagnee ? MAX_SEQUENCE : manche - 1;
+  if (scoreFinal > meilleur) {
+    meilleur = scoreFinal;
+    try { localStorage.setItem(CLE_MEILLEUR, String(meilleur)); } catch (e) {}
+  }
+  afficherScore();
+  if (gagnee) {
+    sonVictoire();
+    annoncer("Bravo ! Tu as réussi la séquence de 32. Tu as gagné ! Appuie sur Entrée pour rejouer.");
+  } else {
+    sonErreur();
+    annoncer("Erreur. Tu as réussi " + scoreFinal + " manches. Appuie sur Entrée pour rejouer.");
+  }
+}
+function entrerDirection(id) {
+  if (!enPartie || enLecture) return;
+  var dir = directionParId(id);
+  if (!dir) return;
+  allumer(dir, dureeSon(manche));
+  if (dir === sequence[indexJoueur]) {
+    indexJoueur++;
+    if (indexJoueur >= sequence.length) {
+      enLecture = true;  // ignore les touches pendant la pause entre deux manches
+      if (manche >= MAX_SEQUENCE) { partieTerminee(true); }
+      else { setTimeout(mancheSuivante, 800); }
+    }
+  } else {
+    partieTerminee(false);
+  }
+}
+
+DIRECTIONS.forEach(function (dir) {
+  document.getElementById(dir.bouton).addEventListener("click", function () { entrerDirection(dir.id); });
+});
+document.getElementById("btn-centre").addEventListener("click", demarrer);
+document.addEventListener("keydown", function (ev) {
+  var touches = { ArrowUp: "haut", ArrowDown: "bas", ArrowLeft: "gauche", ArrowRight: "droite" };
+  if (touches[ev.key]) { entrerDirection(touches[ev.key]); ev.preventDefault(); }
+  else if (ev.key === "Enter") { demarrer(); ev.preventDefault(); }
+});
+var debutToucher = null;
+document.addEventListener("touchstart", function (ev) {
+  var t = ev.changedTouches[0];
+  debutToucher = { x: t.clientX, y: t.clientY };
+}, { passive: true });
+document.addEventListener("touchend", function (ev) {
+  if (!debutToucher) return;
+  var t = ev.changedTouches[0];
+  var dir = directionDuGlisser(t.clientX - debutToucher.x, t.clientY - debutToucher.y);
+  debutToucher = null;
+  if (dir) entrerDirection(dir);
+}, { passive: true });
+afficherScore();
+</script>
+</body>
+</html>
