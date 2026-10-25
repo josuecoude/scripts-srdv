@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Entraînement au clavier QWERTY</title>
+<style>
+  body { font-family: system-ui, sans-serif; line-height: 1.6; max-width: 40em; margin: 2em auto; padding: 0 1em; color: #111; background: #fff; }
+  h1 { font-size: 1.8em; }
+  #consigne { font-size: 1.6em; font-weight: bold; margin: 1em 0; }
+  #score { font-size: 1.2em; color: #333; }
+  #aide { margin-top: 2em; color: #333; }
+  kbd { background: #eee; border: 1px solid #999; border-radius: 4px; padding: 0 .3em; }
+</style>
+</head>
+<body>
+<h1>Entraînement au clavier QWERTY</h1>
+<p id="consigne">Chargement…</p>
+<p id="score" aria-live="polite"></p>
+<div id="aide">
+  <h2>Comment ça marche</h2>
+  <p>Ce logiciel ne s'installe pas : il suffit d'ouvrir ce fichier dans un navigateur (Edge, Chrome ou Firefox).</p>
+  <p>Le logiciel annonce une lettre avec l'alphabet phonétique (Alpha, Bravo, Charlie…) pour être sûr de bien la reconnaître, et tu appuies sur la touche correspondante. Quand des mots deviennent possibles avec les lettres apprises, ils s'ajoutent aux leçons.</p>
+  <p>Au début de chaque leçon de touches, la voix explique chaque touche, doigt par doigt : par exemple, A, petit doigt de la main gauche, S, annulaire de la main gauche.</p>
+  <ul>
+    <li><kbd>Entrée</kbd> : commencer ou continuer.</li>
+    <li><kbd>Échap</kbd> : réentendre la question en cours.</li>
+    <li>Bonne réponse : petit son aigu. Erreur : son grave, puis la question est répétée.</li>
+  </ul>
+  <p>Chaque leçon compte 20 questions. Il faut réussir 80 % des questions du premier coup pour passer à la leçon suivante. Sinon, il faut reprendre la leçon.</p>
+  <p>Ta progression est enregistrée automatiquement dans le navigateur : à la prochaine ouverture, tu reprends là où tu t'étais arrêté.</p>
+  <h2>Leçons</h2>
+  <ol>
+    <li>Lettres A, S, D, F (main gauche).</li>
+    <li>Lettres J, K, L, point-virgule (main droite).</li>
+    <li>Révision : A, S, D, F, J, K, L, point-virgule.</li>
+    <li>Mots avec A, S, D, F.</li>
+    <li>Lettres G, H.</li>
+    <li>Mots avec A, S, D, F, G, H, J, K, L.</li>
+    <li>Rangée du haut : Q, W, E, R, T, Y, U, I, O, P.</li>
+    <li>Rangée du bas : Z, X, C, V, B, N, M, virgule, point, E accent aigu.</li>
+    <li>Mots avec toutes les lettres.</li>
+    <li>Accents : accent grave, accent circonflexe, cédille.</li>
+    <li>Touches Entrée et Espace.</li>
+    <li>Chiffres de la rangée du haut : 1 à 0.</li>
+    <li>Symboles : arobas, point d'exclamation, guillemets.</li>
+    <li>Mots avec accents.</li>
+    <li>Vitesse 1 : mots simples, chronométré.</li>
+    <li>Vitesse 2 : mots avec accents, chronométré.</li>
+    <li>Vitesse 3 : phrases courtes, chronométré.</li>
+  </ol>
+  <p>Leçons de vitesse : 20 mots ou phrases à taper le plus vite possible. Le chronomètre démarre à ta première touche. Ton meilleur score, en mots par minute, est enregistré pour chaque leçon de vitesse. Pour qu'un score compte comme record, il faut garder au moins 80 % de réussite du premier coup.</p></div>
+<script>
+"use strict";
+
+// ---------- Alphabet phonétique (OTAN, prononciation française) ----------
+var PHONETIQUE = {
+  a: "Alpha", b: "Bravo", c: "Charlie", d: "Delta", e: "Echo",
+  f: "Foxtrot", g: "Golf", h: "Hôtel", i: "India", j: "Juliette",
+  k: "Kilo", l: "Lima", m: "Mike", n: "November", o: "Oscar",
+  p: "Papa", q: "Québec", r: "Roméo", s: "Sierra", t: "Tango",
+  u: "Uniforme", v: "Victor", w: "Whiskey", x: "X-ray", y: "Yankee",
+  z: "Zoulou", ";": "point-virgule", ",": "virgule", ".": "point",
+  "é": "E accent aigu",
+  "1": "un", "2": "deux", "3": "trois", "4": "quatre", "5": "cinq",
+  "6": "six", "7": "sept", "8": "huit", "9": "neuf", "0": "zéro",
+  "@": "arobas", "!": "point d'exclamation", '"': "guillemets"
+};
+// Base d'une lettre accentuée (pour la frappe avec une touche morte) :
+var BASE_ACCENT = { "è": "e", "ê": "e", "â": "a", "î": "i", "ô": "o", "û": "u", "ç": "c", "é": "e" };
+
+// ---------- Doigt pour chaque touche (dactylographie classique) ----------
+var DOIGTS = {
+  a: "petit doigt de la main gauche", s: "annulaire de la main gauche",
+  d: "majeur de la main gauche", f: "index de la main gauche",
+  g: "index de la main gauche", h: "index de la main droite",
+  j: "index de la main droite", k: "majeur de la main droite",
+  l: "annulaire de la main droite", ";": "petit doigt de la main droite",
+  q: "petit doigt de la main gauche", w: "annulaire de la main gauche",
+  e: "majeur de la main gauche", r: "index de la main gauche",
+  t: "index de la main gauche", y: "index de la main droite",
+  u: "index de la main droite", i: "majeur de la main droite",
+  o: "annulaire de la main droite", p: "petit doigt de la main droite",
+  z: "petit doigt de la main gauche", x: "annulaire de la main gauche",
+  c: "majeur de la main gauche", v: "index de la main gauche",
+  b: "index de la main gauche", n: "index de la main droite",
+  m: "index de la main droite", ",": "majeur de la main droite",
+  ".": "annulaire de la main droite", "é": "petit doigt de la main droite",
+  "1": "petit doigt de la main gauche", "2": "annulaire de la main gauche",
+  "3": "majeur de la main gauche", "4": "index de la main gauche",
+  "5": "index de la main gauche", "6": "index de la main droite",
+  "7": "index de la main droite", "8": "majeur de la main droite",
+  "9": "annulaire de la main droite", "0": "petit doigt de la main droite"
+};
+
+// Un item "touche" : { nom, direct, doigt, base? }
+//  nom : ce que la voix annonce. direct : la touche qui donne le caractère.
+//  doigt : explication parlée au début de la leçon.
+//  base : lettre de base si le caractère se tape aussi avec une touche morte
+//         (ex. accent grave puis E pour È) ou une apostrophe puis C pour Ç.
+function toucheSimple(car) {
+  return { nom: PHONETIQUE[car], direct: car, doigt: DOIGTS[car] };
+}
+function toucheAccent(nom, direct, base) {
+  return { nom: nom, direct: direct, base: base,
+           doigt: "touche dédiée, ou touche de l'accent puis la lettre" };
+}
+
+// ---------- Leçons ----------
+// type "touches" : 20 questions, une touche par question.
+// type "mots" : 20 questions, un mot à taper par question.
+var LECONS = [
+  { nom: "Leçon 1", titre: "Lettres A, S, D, F", type: "touches",
+    intro: "Place tes doigts de la main gauche sur la rangée du milieu.",
+    items: ["a", "s", "d", "f"].map(toucheSimple) },
+  { nom: "Leçon 2", titre: "Lettres J, K, L, point-virgule", type: "touches",
+    intro: "Place tes doigts de la main droite sur la rangée du milieu.",
+    items: ["j", "k", "l", ";"].map(toucheSimple) },
+  { nom: "Leçon 3", titre: "Révision des deux mains", type: "touches",
+    intro: "Les deux mains sur la rangée du milieu.",
+    items: ["a", "s", "d", "f", "j", "k", "l", ";"].map(toucheSimple) },
+  { nom: "Leçon 4", titre: "Mots avec A, S, D, F", type: "mots",
+    intro: "Maintenant, des mots avec seulement les lettres A, S, D et F. Écoute le mot, puis tape-le en entier.",
+    mots: ["a", "as", "fa", "sa", "sas", "dada", "fada"] },
+  { nom: "Leçon 5", titre: "Lettres G, H", type: "touches",
+    intro: "Deux nouvelles lettres au centre du clavier.",
+    items: ["g", "h"].map(toucheSimple) },
+  { nom: "Leçon 6", titre: "Mots avec A, S, D, F, G, H, J, K, L", type: "mots",
+    intro: "Des mots avec les lettres apprises jusqu'ici, y compris G et H.",
+    mots: ["a", "as", "fa", "sa", "sas", "dada", "fada", "la", "las", "sal", "salsa", "gala", "gaga", "saga"] },
+  { nom: "Leçon 7", titre: "Rangée du haut", type: "touches",
+    intro: "La rangée du haut, de gauche à droite.",
+    items: ["q", "w", "e", "r", "t", "y", "u", "i", "o", "p"].map(toucheSimple) },
+  { nom: "Leçon 8", titre: "Rangée du bas", type: "touches",
+    intro: "La rangée du bas, de gauche à droite. Sur un clavier canadien-français, la dernière touche de cette rangée donne E accent aigu.",
+    items: ["z", "x", "c", "v", "b", "n", "m", ",", ".", "é"].map(toucheSimple) },
+  { nom: "Leçon 9", titre: "Mots avec toutes les lettres", type: "mots",
+    intro: "Des mots avec toutes les lettres apprises, y compris la rangée du bas.",
+    mots: ["le", "les", "des", "et", "est", "sur", "rue", "roi", "tu", "il", "elle",
+           "pour", "qui", "que", "tout", "plus", "jour", "soir", "fort", "tour",
+           "loup", "fou", "feu", "jeu", "peu", "port", "sort", "ski", "joie",
+           "loi", "lui", "pur", "jus", "sol", "sel", "tel", "ou", "pis",
+           "la", "las", "sal", "salsa", "gala", "gaga", "saga", "dada", "fada", "sas",
+           "avec", "chez", "nez", "vue", "maman", "merci", "musique", "zéro", "zone",
+           "mon", "nom", "bon", "son", "ton", "ma", "me", "ne", "ce", "ci",
+           "car", "cas", "bol", "col", "vol", "mot", "bac", "bec", "cab",
+           "cinq", "vingt", "banc", "vent", "voix", "noix", "bois", "mois",
+           "toit", "nuit", "fruit", "bruit"] },
+  { nom: "Leçon 10", titre: "Accents", type: "touches",
+    intro: "Les accents. Si ton clavier a une touche dédiée pour la lettre accentuée, appuie dessus. Sinon, appuie d'abord sur la touche de l'accent, puis sur la lettre : par exemple accent grave puis E pour E accent grave.",
+    items: [
+      toucheAccent("E accent grave", "è", "e"),
+      toucheAccent("E accent circonflexe", "ê", "e"),
+      toucheAccent("A accent circonflexe", "â", "a"),
+      toucheAccent("I accent circonflexe", "î", "i"),
+      toucheAccent("O accent circonflexe", "ô", "o"),
+      toucheAccent("U accent circonflexe", "û", "u"),
+      toucheAccent("C cédille", "ç", "c")
+    ] },
+  { nom: "Leçon 11", titre: "Entrée et Espace", type: "touches",
+    intro: "Deux touches essentielles : Entrée pour valider, Espace pour séparer les mots.",
+    items: [
+      { nom: "Entrée", direct: "Enter", doigt: "petit doigt de la main droite" },
+      { nom: "Espace", direct: " ", doigt: "pouce" }
+    ] },
+  { nom: "Leçon 12", titre: "Chiffres de la rangée du haut", type: "touches",
+    intro: "Les chiffres de la rangée du haut, de gauche à droite : 1, 2, 3, 4, 5, 6, 7, 8, 9, 0.",
+    items: ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"].map(toucheSimple) },
+  { nom: "Leçon 13", titre: "Symboles", type: "touches",
+    intro: "Trois symboles. Tiens la touche Majuscule enfoncée pour les deux premiers. Pour arobas, selon ton clavier, c'est Alt Gr et 2, ou Majuscule et 2.",
+    items: [
+      { nom: "arobas", direct: "@", doigt: "Alt Gr et 2, ou Majuscule et 2 selon le clavier" },
+      { nom: "point d'exclamation", direct: "!", doigt: "Majuscule enfoncée, puis 1" },
+      { nom: "guillemets", direct: '"', doigt: "Majuscule enfoncée, puis 2" }
+    ] },
+  { nom: "Leçon 14", titre: "Mots avec accents", type: "mots",
+    intro: "Des mots avec des accents : accent grave, accent circonflexe, accent aigu et cédille.",
+    mots: ["père", "même", "forêt", "ça", "garçon", "leçon", "reçu",
+           "hôtel", "côte", "pâte", "île", "sûr", "tête", "fête", "bête",
+           "café", "bébé", "vélo", "école", "élève", "zèbre", "zéro"] },
+  { nom: "Vitesse 1", titre: "Vitesse : mots simples", type: "mots", vitesse: true,
+    intro: "Leçon de vitesse. Tape les mots le plus vite possible. Le chronomètre démarre à ta première touche.",
+    mots: ["le", "les", "des", "et", "est", "sur", "rue", "roi", "tu", "il", "elle",
+           "pour", "qui", "que", "tout", "plus", "jour", "soir", "fort", "tour",
+           "loup", "fou", "feu", "jeu", "peu", "port", "sort", "ski", "joie",
+           "loi", "lui", "pur", "jus", "sol", "sel", "tel", "ou", "pis",
+           "la", "las", "sal", "salsa", "gala", "gaga", "saga", "dada", "fada", "sas",
+           "avec", "chez", "nez", "vue", "maman", "merci", "musique", "zéro", "zone",
+           "mon", "nom", "bon", "son", "ton", "ma", "me", "ne", "ce", "ci",
+           "car", "cas", "bol", "col", "vol", "mot", "bac", "bec", "cab",
+           "cinq", "vingt", "banc", "vent", "voix", "noix", "bois", "mois",
+           "toit", "nuit", "fruit", "bruit"] },
+  { nom: "Vitesse 2", titre: "Vitesse : mots avec accents", type: "mots", vitesse: true,
+    intro: "Leçon de vitesse, avec des accents. Tape les mots le plus vite possible. Le chronomètre démarre à ta première touche.",
+    mots: ["père", "même", "forêt", "ça", "garçon", "leçon", "reçu",
+           "hôtel", "côte", "pâte", "île", "sûr", "tête", "fête", "bête",
+           "café", "bébé", "vélo", "école", "élève", "zèbre", "zéro"] },
+  { nom: "Vitesse 3", titre: "Vitesse : phrases courtes", type: "mots", vitesse: true,
+    intro: "Leçon de vitesse, avec des phrases courtes. N'oublie pas la touche Espace entre les mots. Le chronomètre démarre à ta première touche.",
+    mots: ["le chat dort", "la lune brille", "mon ami joue", "le soleil brille",
+           "la musique est belle", "un petit mot", "je joue du piano",
+           "le train roule", "la porte est ouverte", "tu viens jouer",
+           "la nuit est calme", "il fait beau", "le chien court", "le jour est beau",
+           "ma maison est grande", "le vent souffle", "je lis un livre", "tu cours vite"] }
+];
+var NB_QUESTIONS = 20;   // questions par leçon
+var SEUIL = 80;          // pourcentage à atteindre du premier coup pour réussir
+
+// ---------- Progression (enregistrée dans le navigateur) ----------
+var CLE = "entrainementClavierQWERTY";
+var progression = { lecon: 0, terminees: [], essais: 0, reussis: 0, records: {} };
+try {
+  var sauve = JSON.parse(localStorage.getItem(CLE) || "null");
+  if (sauve && typeof sauve.lecon === "number") progression = sauve;
+} catch (e) {}
+if (!progression.records) progression.records = {};
+if (progression.lecon >= LECONS.length) progression.lecon = 0;
+function enregistrer() {
+  try { localStorage.setItem(CLE, JSON.stringify(progression)); } catch (e) {}
+}
+
+// ---------- Voix ----------
+var voixFr = null;
+function choisirVoix() {
+  var voix = window.speechSynthesis ? speechSynthesis.getVoices() : [];
+  for (var i = 0; i < voix.length; i++) {
+    if (voix[i].lang && voix[i].lang.toLowerCase().indexOf("fr") === 0) { voixFr = voix[i]; return; }
+  }
+  voixFr = null;
+}
+if (window.speechSynthesis) {
+  choisirVoix();
+  speechSynthesis.onvoiceschanged = choisirVoix;
+}
+function parler(texte, apres) {
+  afficher(texte);
+  if (!window.speechSynthesis) { if (apres) apres(); return; }
+  speechSynthesis.cancel();
+  var msg = new SpeechSynthesisUtterance(texte);
+  msg.lang = "fr-FR";
+  if (voixFr) msg.voice = voixFr;
+  msg.rate = 0.95;
+  if (apres) msg.onend = apres;
+  speechSynthesis.speak(msg);
+}
+
+// ---------- Sons ----------
+var ctxAudio = null;
+function bip(freq, duree, type) {
+  try {
+    ctxAudio = ctxAudio || new (window.AudioContext || window.webkitAudioContext)();
+    var osc = ctxAudio.createOscillator();
+    var gain = ctxAudio.createGain();
+    osc.type = type || "sine";
+    osc.frequency.value = freq;
+    gain.gain.setValueAtTime(0.2, ctxAudio.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctxAudio.currentTime + duree);
+    osc.connect(gain); gain.connect(ctxAudio.destination);
+    osc.start(); osc.stop(ctxAudio.currentTime + duree);
+  } catch (e) {}
+}
+function sonErreur() { bip(140, 0.4, "square"); }
+function sonSucces() { bip(880, 0.15, "sine"); }
+function sonTick() { bip(1200, 0.05, "sine"); }
+function sonFanfare() {
+  [523, 659, 784, 1047].forEach(function (f, i) {
+    setTimeout(function () { bip(f, 0.25, "sine"); }, i * 180);
+  });
+}
+
+// ---------- Affichage ----------
+var elConsigne = document.getElementById("consigne");
+var elScore = document.getElementById("score");
+function afficher(texte) { elConsigne.textContent = texte; }
+function afficherScore() {
+  var lecon = LECONS[progression.lecon];
+  elScore.textContent = lecon.nom + " : " + lecon.titre + " — question " +
+    (questionsFaites + 1) + " sur " + NB_QUESTIONS +
+    " — " + progression.terminees.length + " leçons terminées.";
+}
+
+// ---------- Jeu ----------
+var etape = "accueil"; // accueil, intro, pret, exercice, fin*
+var questionsFaites = 0;
+var reussitesPremierCoup = 0;
+var questionRatee = false;
+var itemCourant = null;
+var motCourant = "";
+var posMot = 0;
+var toucheMorte = false;
+var apostrophe = false;
+var chronoDemarre = false;  // chronomètre d'une leçon de vitesse
+var debutChrono = 0;
+var motsTermines = [];      // mots ou phrases terminés (leçons de vitesse)
+
+function leconActuelle() { return LECONS[progression.lecon]; }
+
+function accueil() {
+  etape = "accueil";
+  questionsFaites = 0;
+  var lecon = leconActuelle();
+  var resume = progression.terminees.length > 0
+    ? " Tu as déjà terminé " + progression.terminees.length +
+      (progression.terminees.length > 1 ? " leçons." : " leçon.")
+    : "";
+  afficher(lecon.nom + " : " + lecon.titre + ". Appuie sur Entrée pour commencer." + resume);
+  afficherScore();
+}
+
+// Explication doigt par doigt, parlée au début de chaque leçon de touches.
+function explicationDoigts(lecon) {
+  if (lecon.type !== "touches") return "";
+  return " Voici les touches, doigt par doigt : " +
+    lecon.items.map(function (it) { return it.nom + ", " + it.doigt + "."; }).join(" ");
+}
+
+function commencerLecon() {
+  questionsFaites = 0;
+  reussitesPremierCoup = 0;
+  chronoDemarre = false;
+  motsTermines = [];
+  etape = "intro";
+  var lecon = leconActuelle();
+  var texte = lecon.nom + ". " + lecon.titre + ". " + lecon.intro +
+    explicationDoigts(lecon) +
+    " Chaque leçon compte " + NB_QUESTIONS + " questions. Il faut réussir " + SEUIL +
+    " pour cent des questions du premier coup.";
+  if (lecon.vitesse) {
+    var record = progression.records[lecon.nom];
+    texte += record
+      ? " Ton record pour cette leçon est de " + record + " mots par minute. Essaie de le battre, en gardant " + SEUIL + " pour cent de réussite."
+      : " C'est ta première fois sur cette leçon de vitesse : établis ton premier record, en gardant " + SEUIL + " pour cent de réussite.";
+  }
+  texte += " Appuie sur Entrée quand tu es prêt.";
+  parler(texte, function () { etape = "pret"; });
+}
+
+function choisirSansRepeter(liste, precedent) {
+  if (liste.length === 1) return liste[0];
+  var choix;
+  do { choix = liste[Math.floor(Math.random() * liste.length)]; }
+  while (choix === precedent);
+  return choix;
+}
+var precedentItem = null;
+var precedentMot = null;
+
+function nouvelleQuestion() {
+  var lecon = leconActuelle();
+  questionRatee = false;
+  toucheMorte = false;
+  apostrophe = false;
+  if (lecon.type === "mots") {
+    motCourant = choisirSansRepeter(lecon.mots, precedentMot);
+    precedentMot = motCourant;
+    posMot = 0;
+    parler(motCourant);
+  } else {
+    itemCourant = choisirSansRepeter(lecon.items, precedentItem);
+    precedentItem = itemCourant;
+    parler(itemCourant.nom);
+  }
+  etape = "exercice";
+  afficherScore();
+}
+
+function questionTerminee() {
+  questionsFaites++;
+  progression.essais++;
+  if (!questionRatee) {
+    reussitesPremierCoup++;
+    progression.reussis++;
+  }
+  if (leconActuelle().type === "mots") motsTermines.push(motCourant);
+  enregistrer();
+  if (questionsFaites >= NB_QUESTIONS) { finirLecon(); }
+  else { setTimeout(nouvelleQuestion, 400); }
+}
+
+function erreurQuestion() {
+  sonErreur();
+  questionRatee = true;
+}
+
+function finirLecon() {
+  var lecon = leconActuelle();
+  var pct = Math.round(reussitesPremierCoup / NB_QUESTIONS * 100);
+  etape = "fin";
+  if (pct >= SEUIL) {
+    if (progression.terminees.indexOf(lecon.nom) === -1) progression.terminees.push(lecon.nom);
+    sonFanfare();
+    var messageVitesse = "";
+    if (lecon.vitesse) {
+      // Vitesse standard : caractères tapés divisés par 5, divisés par les minutes.
+      var secondes = Math.max((Date.now() - debutChrono) / 1000, 1);
+      var caracteres = 0;
+      for (var i = 0; i < motsTermines.length; i++) caracteres += motsTermines[i].length;
+      var motsParMinute = Math.round(caracteres / 5 / (secondes / 60));
+      var ancienRecord = progression.records[lecon.nom];
+      if (!ancienRecord || motsParMinute > ancienRecord) {
+        progression.records[lecon.nom] = motsParMinute;
+        messageVitesse = " Nouveau record : " + motsParMinute + " mots par minute !";
+      } else {
+        messageVitesse = " Ta vitesse : " + motsParMinute + " mots par minute. Ton record reste de " +
+          ancienRecord + " mots par minute.";
+      }
+    }
+    if (progression.lecon + 1 < LECONS.length) {
+      var suivante = LECONS[progression.lecon + 1];
+      parler("Bravo ! " + lecon.nom + " réussie avec " + pct + " pour cent." + messageVitesse +
+        " Appuie sur Entrée pour passer à " + suivante.nom + " : " + suivante.titre + ".");
+      etape = "finReussie";
+    } else {
+      parler("Bravo ! Tu as terminé toutes les leçons avec " + pct + " pour cent." + messageVitesse +
+        " Appuie sur Entrée pour recommencer depuis la leçon 1.");
+      etape = "finToutes";
+    }
+  } else {
+    parler("Leçon terminée, mais avec seulement " + pct + " pour cent. Il faut " + SEUIL +
+      " pour cent pour réussir. Tu dois reprendre " + lecon.nom + "." +
+      " Appuie sur Entrée pour recommencer la leçon.");
+    etape = "finRatee";
+  }
+  enregistrer();
+  afficherScore();
+}
+
+function verifierToucheItem(item, touche) {
+  if (touche === item.direct) return "ok";
+  if (item.base) {
+    if (touche === "Dead" && !toucheMorte) { toucheMorte = true; return "attente"; }
+    if (toucheMorte && touche === item.base) return "ok";
+    if (item.direct === "ç" && touche === "'" && !apostrophe) { apostrophe = true; return "attente"; }
+    if (apostrophe && touche === "c") return "ok";
+  }
+  return "erreur";
+}
+
+function verifierToucheMot(touche) {
+  var attendu = motCourant[posMot];
+  if (touche === attendu) return "ok";
+  var base = BASE_ACCENT[attendu];
+  if (base) {
+    if (touche === "Dead" && !toucheMorte) { toucheMorte = true; return "attente"; }
+    if (toucheMorte && touche === base) return "ok";
+    if (attendu === "ç" && touche === "'" && !apostrophe) { apostrophe = true; return "attente"; }
+    if (apostrophe && touche === "c") return "ok";
+  }
+  return "erreur";
+}
+
+function traiterTouche(touche) {
+  var lecon = leconActuelle();
+  if (lecon.type === "mots") {
+    // Le chronomètre d'une leçon de vitesse démarre à la première touche tapée.
+    if (lecon.vitesse && !chronoDemarre) { chronoDemarre = true; debutChrono = Date.now(); }
+    var res = verifierToucheMot(touche);
+    if (res === "attente") return;
+    if (res === "ok") {
+      toucheMorte = false; apostrophe = false;
+      sonTick();
+      posMot++;
+      if (posMot >= motCourant.length) { questionTerminee(); }
+      return;
+    }
+    erreurQuestion();
+    toucheMorte = false; apostrophe = false;
+    posMot = 0;
+    parler(motCourant);
+    return;
+  }
+  var r = verifierToucheItem(itemCourant, touche);
+  if (r === "attente") return;
+  if (r === "ok") {
+    toucheMorte = false; apostrophe = false;
+    sonSucces();
+    questionTerminee();
+    return;
+  }
+  erreurQuestion();
+  toucheMorte = false; apostrophe = false;
+  parler(itemCourant.nom);
+}
+
+// ---------- Clavier ----------
+document.addEventListener("keydown", function (ev) {
+  if (etape === "exercice") {
+    if (ev.key === "Escape") {
+      var lecon = leconActuelle();
+      parler(lecon.type === "mots" ? motCourant : itemCourant.nom);
+      ev.preventDefault();
+      return;
+    }
+    if (ev.key.length === 1 || ev.key === "Enter" || ev.key === " " || ev.key === "Dead" || ev.key === "'") {
+      traiterTouche(ev.key === "Enter" ? "Enter" : ev.key);
+    }
+    ev.preventDefault();
+    return;
+  }
+  if (ev.key === "Enter") {
+    if (etape === "accueil") { commencerLecon(); }
+    else if (etape === "pret") { nouvelleQuestion(); }
+    else if (etape === "finReussie") { progression.lecon++; enregistrer(); commencerLecon(); }
+    else if (etape === "finRatee") { commencerLecon(); }
+    else if (etape === "finToutes") { progression.lecon = 0; enregistrer(); accueil(); }
+    ev.preventDefault();
+    return;
+  }
+});
+
+// ---------- Ouverture : annonce de la leçon ----------
+accueil();
+// La voix démarre après une première touche (les navigateurs l'exigent) :
+// dès que l'utilisateur appuie sur Entrée, la leçon en cours est annoncée.
+</script>
+</body>
+</html>
