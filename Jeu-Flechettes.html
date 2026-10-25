@@ -24,6 +24,7 @@
 <p>Pour lancer : tape n'importe où sur l'écran avec 1 doigt, ou appuie sur la barre d'espace, Entrée, ou clique n'importe où sur l'ordinateur. Avec VoiceOver : le focus est mis sur le gros bouton Lancer au début de chaque vol, et un double-toucher n'importe où lance la fléchette. 10 fléchettes par partie. Pour bien entendre le son aller de gauche à droite, utilise des écouteurs ou un casque : le stéréo s'entend presque pas sur le haut-parleur du téléphone.</p>
 <script>
 var NB_FLECHETTES = 10;
+var SCORE_MAX = NB_FLECHETTES * 100;  // 100 points par fléchette au maximum
 var CLE_MEILLEUR = "jeuFlechettesMeilleur";
 var FREQ_VOL = 520;  // son continu pendant le vol de la fléchette
 
@@ -198,10 +199,10 @@ function finPartie() {
     try { localStorage.setItem(CLE_MEILLEUR, String(meilleur)); } catch (e) {}
   }
   afficherScore();
-  afficherStatut("Partie terminée. Score : " + score + " points.");
+  afficherStatut("Partie terminée. Score : " + score + " points sur " + SCORE_MAX + ".");
   document.getElementById("btn-commencer").textContent = "Rejouer";
   afficherBoutons();
-  var message = "Partie terminée. Ton score est de " + score + " points.";
+  var message = "Partie terminée. Ton score est de " + score + " points sur " + SCORE_MAX + ".";
   if (nouveauRecord) message += " Nouveau record !";
   else if (meilleur > 0) message += " Ton record est de " + meilleur + " points.";
   parler(message);
