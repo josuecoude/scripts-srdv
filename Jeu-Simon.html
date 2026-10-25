@@ -29,11 +29,11 @@
   <button class="case" id="btn-droite" aria-label="Droite">→<br>Droite</button>
   <button class="case" id="btn-bas" aria-label="Bas">↓<br>Bas</button>
 </div>
-<p><button id="btn-test">Tester le son</button> Tu dois entendre les 4 sons, dans l'ordre haut, droite, bas, gauche.</p>
+<p><button id="btn-test">Tester le son</button> La voix dit chaque direction, puis tu entends son son, dans l'ordre haut, droite, bas, gauche.</p>
 <p id="score"></p>
 <p id="statut">Appuie sur Entrée ou sur Commencer pour jouer.</p>
 <p>Écoute la séquence, puis répète-la : avec les 4 flèches du clavier, en touchant les cases, ou en glissant le doigt vers le haut, la gauche, la droite ou le bas. Comme le jeu classique, la partie se gagne quand tu réussis la séquence de 32 sons. Le jeu accélère au fil des manches, et il n'y a pas de limite de temps pour répondre.</p>
-<p>Avec VoiceOver : les glissés ne fonctionnent pas, car VoiceOver les utilise pour naviguer. Déplace plutôt le focus d'un bouton à l'autre en balayant vers la gauche ou la droite, puis touche deux fois pour choisir la direction. Sans VoiceOver : les glissés fonctionnent partout sur la grille, et les boutons sont très gros — le bouton Commencer occupe tout le centre de l'écran, tu peux le toucher au milieu de l'écran sans le chercher. Glisse au milieu de l'écran, pas à partir des bords, pour éviter que Safari revienne en arrière. Il n'y a aucune voix dans le jeu, seulement les sons : chaque son a sa direction, le plus aigu pour le haut, puis la droite, le bas, et le plus grave pour la gauche. Un son grave et long veut dire que tu t'es trompé, et une petite mélodie veut dire que tu as gagné.</p>
+<p>Avec VoiceOver : les glissés ne fonctionnent pas, car VoiceOver les utilise pour naviguer. Déplace plutôt le focus d'un bouton à l'autre en balayant vers la gauche ou la droite, puis touche deux fois pour choisir la direction. Sans VoiceOver : les glissés fonctionnent partout sur la grille, et les boutons sont très gros — le bouton Commencer occupe tout le centre de l'écran, tu peux le toucher au milieu de l'écran sans le chercher. Glisse au milieu de l'écran, pas à partir des bords, pour éviter que Safari revienne en arrière. Pendant la partie, il n'y a aucune voix, seulement les sons. Le bouton Tester le son, lui, dit chaque direction à voix haute avant de jouer son son, pour apprendre à les reconnaître. Hors partie, tu peux aussi toucher les boutons Haut, Bas, Gauche et Droite librement : chacun joue son son, sans démarrer de partie. Un son grave et long veut dire que tu t'es trompé, et une petite mélodie veut dire que tu as gagné.</p>
 <script>
 var MAX_SEQUENCE = 32;      // victoire à la séquence de 32, comme le Simon classique
 var SEUIL_GLISSER = 30;     // distance minimale d'un glisser, en pixels
@@ -183,9 +183,10 @@ function partieTerminee(gagnee) {
   }
 }
 function entrerDirection(id) {
-  if (!enPartie || enLecture) return;
   var dir = directionParId(id);
   if (!dir) return;
+  if (!enPartie) { allumer(dir, 400); return; }  // hors partie : toucher un bouton joue librement son son
+  if (enLecture) return;
   allumer(dir, dureeSon(manche));
   if (dir === sequence[indexJoueur]) {
     indexJoueur++;
@@ -203,11 +204,37 @@ DIRECTIONS.forEach(function (dir) {
   document.getElementById(dir.bouton).addEventListener("click", function () { entrerDirection(dir.id); });
 });
 document.getElementById("btn-centre").addEventListener("click", demarrer);
+// Voix utilisée seulement par le bouton Tester le son : elle dit la direction,
+// puis le son joue. Si la voix ne répond pas, le son joue quand même après 2 secondes.
+function parler(texte, apres) {
+  if (!window.speechSynthesis) { if (apres) apres(); return; }
+  speechSynthesis.cancel();
+  // Sur iPhone, un message parlé juste après un cancel() peut être perdu :
+  // on laisse un petit délai avant de parler.
+  setTimeout(function () {
+    var msg = new SpeechSynthesisUtterance(texte);
+    msg.lang = "fr-FR";
+    var fait = false;
+    function suite() { if (!fait) { fait = true; if (apres) apres(); } }
+    msg.onend = suite;
+    setTimeout(suite, 2000);
+    speechSynthesis.speak(msg);
+  }, 100);
+}
 document.getElementById("btn-test").addEventListener("click", function () {
+  if (enPartie) return;  // pas de test pendant une partie, pour ne pas mélanger les sons
   deverrouillerAudio();
-  DIRECTIONS.forEach(function (dir, i) {
-    setTimeout(function () { allumer(dir, 400); }, i * 600);
-  });
+  var i = 0;
+  function etape() {
+    if (i >= DIRECTIONS.length) return;
+    var dir = DIRECTIONS[i];
+    i++;
+    parler(dir.nom, function () {
+      allumer(dir, 400);
+      setTimeout(etape, 600);
+    });
+  }
+  etape();
 });
 // Chaque interaction tente de déverrouiller le son du navigateur.
 ["pointerdown", "touchstart", "click", "keydown"].forEach(function (ev) {
