@@ -32,7 +32,7 @@
 <p><button id="btn-test">Tester le son</button> La voix dit chaque direction, puis tu entends son son, dans l'ordre haut, droite, bas, gauche.</p>
 <p id="score"></p>
 <p id="statut">Appuie sur Entrée ou sur Commencer pour jouer.</p>
-<p>Écoute la séquence, puis répète-la : avec les 4 flèches du clavier, en touchant les cases, ou en glissant le doigt vers le haut, la gauche, la droite ou le bas. Comme le jeu classique, la partie se gagne quand tu réussis la séquence de 32 sons. Le jeu accélère au fil des manches, et il n'y a pas de limite de temps pour répondre. Après chaque séquence, une pause d'une seconde de silence marque la fin de la séquence avant que ce soit à toi de jouer. Si tu te trompes, la voix te dit à quelle manche tu étais rendu et si c'est un nouveau record.</p>
+<p>Écoute la séquence, puis répète-la : avec les 4 flèches du clavier, en touchant les cases, ou en glissant le doigt vers le haut, la gauche, la droite ou le bas. Comme le jeu classique, la partie se gagne quand tu réussis la séquence de 32 sons. Le jeu accélère au fil des manches. Après chaque séquence, tu as 5 secondes pour faire chaque geste : le chrono repart à zéro après chaque bonne réponse, et si tu ne fais rien pendant 5 secondes, tu perds automatiquement. Si tu te trompes, la voix te dit à quelle manche tu étais rendu et si c'est un nouveau record.</p>
 <p>Avec VoiceOver : les glissés ne fonctionnent pas, car VoiceOver les utilise pour naviguer. Déplace plutôt le focus d'un bouton à l'autre en balayant vers la gauche ou la droite, puis touche deux fois pour choisir la direction. Sans VoiceOver : les glissés fonctionnent partout sur la grille, et les boutons sont très gros — le bouton Commencer occupe tout le centre de l'écran, tu peux le toucher au milieu de l'écran sans le chercher. Glisse au milieu de l'écran, pas à partir des bords, pour éviter que Safari revienne en arrière. Pendant la partie, il n'y a aucune voix, seulement les sons. Le bouton Tester le son, lui, dit chaque direction à voix haute avant de jouer son son, pour apprendre à les reconnaître. Hors partie, tu peux aussi toucher les boutons Haut, Bas, Gauche et Droite librement : chacun joue son son, sans démarrer de partie. Un son grave et long veut dire que tu t'es trompé, et une petite mélodie veut dire que tu as gagné.</p>
 <script>
 var MAX_SEQUENCE = 32;      // victoire à la séquence de 32, comme le Simon classique
@@ -114,6 +114,17 @@ var indexJoueur = 0;
 var manche = 0;
 var enLecture = false;   // la séquence est en train de jouer : les touches sont ignorées
 var enPartie = false;
+var DELAI_REPONSE = 5000;  // 5 secondes par geste, comme au Simon classique
+var chronoReponse = null;
+function demarrerChrono() {
+  arreterChrono();
+  chronoReponse = setTimeout(function () {
+    if (enPartie && !enLecture) partieTerminee(false);  // rien fait pendant 5 secondes : perdu
+  }, DELAI_REPONSE);
+}
+function arreterChrono() {
+  if (chronoReponse) { clearTimeout(chronoReponse); chronoReponse = null; }
+}
 
 // Le statut est affiché en texte seulement, sans voix et sans annonce
 // automatique : rien ne doit couvrir les sons du jeu.
@@ -141,12 +152,9 @@ function jouerSequence() {
       i++;
       setTimeout(etape, intervalle);
     } else {
-      // Pause d'une seconde de silence après la séquence, comme au Simon classique :
-      // elle marque la fin de la séquence avant que ce soit à toi de jouer.
-      setTimeout(function () {
-        enLecture = false;
-        indexJoueur = 0;
-      }, 1000);
+      enLecture = false;
+      indexJoueur = 0;
+      demarrerChrono();  // c'est à toi : 5 secondes pour le premier geste
     }
   }
   etape();
@@ -162,6 +170,7 @@ function mancheSuivante() {
 function demarrer() {
   audio();
   deverrouillerAudio();
+  arreterChrono();
   jouerSon(660, 150);  // petit bip de départ, joué dans le geste : il confirme que le son fonctionne
   sequence = [];
   manche = 0;
@@ -173,6 +182,7 @@ function manches(n) { return n + (n > 1 ? " manches" : " manche"); }
 function partieTerminee(gagnee) {
   enPartie = false;
   enLecture = false;
+  arreterChrono();
   var scoreFinal = gagnee ? MAX_SEQUENCE : manche - 1;
   var nouveauRecord = scoreFinal > 0 && scoreFinal > meilleur;
   if (scoreFinal > meilleur) {
@@ -203,9 +213,12 @@ function entrerDirection(id) {
   if (dir === sequence[indexJoueur]) {
     indexJoueur++;
     if (indexJoueur >= sequence.length) {
+      arreterChrono();
       enLecture = true;  // ignore les touches pendant la pause entre deux manches
       if (manche >= MAX_SEQUENCE) { partieTerminee(true); }
       else { setTimeout(mancheSuivante, 800); }
+    } else {
+      demarrerChrono();  // le chrono repart à zéro pour le prochain geste
     }
   } else {
     partieTerminee(false);
