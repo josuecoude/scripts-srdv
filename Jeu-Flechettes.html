@@ -51,22 +51,20 @@ function audio() {
 function deverrouillerAudio() { audio(); }
 
 // Voix utilisée pour les résultats et le score final, jamais pendant le vol
-// (elle couvrirait le son qui traverse). Si la voix ne répond pas, on continue
+// (elle couvrirait le son qui traverse). L'annonce est parlée tout de suite,
+// dans le geste qui la déclenche : sur iPhone, une annonce différée hors du
+// geste peut être ignorée en silence. Si la voix ne répond pas, on continue
 // quand même après 2,5 secondes.
 function parler(texte, apres) {
   if (!window.speechSynthesis) { if (apres) apres(); return; }
   speechSynthesis.cancel();
-  // Sur iPhone, un message parlé juste après un cancel() peut être perdu :
-  // on laisse un petit délai avant de parler.
-  setTimeout(function () {
-    var msg = new SpeechSynthesisUtterance(texte);
-    msg.lang = "fr-FR";
-    var fait = false;
-    function suite() { if (!fait) { fait = true; if (apres) apres(); } }
-    msg.onend = suite;
-    setTimeout(suite, 2500);
-    speechSynthesis.speak(msg);
-  }, 100);
+  var msg = new SpeechSynthesisUtterance(texte);
+  msg.lang = "fr-FR";
+  var fait = false;
+  function suite() { if (!fait) { fait = true; if (apres) apres(); } }
+  msg.onend = suite;
+  setTimeout(suite, 2500);
+  speechSynthesis.speak(msg);
 }
 
 var meilleur = 0;
@@ -214,7 +212,9 @@ function demarrer() {
   flechette = 0;
   score = 0;
   afficherScore();
-  dartSuivant();
+  // « C'est parti » est parlé dans le geste d'appui sur Commencer : ça
+  // déverrouille la voix sur iPhone avant la première fléchette.
+  parler("C'est parti.", dartSuivant);
 }
 
 document.getElementById("btn-commencer").addEventListener("click", function (ev) {
