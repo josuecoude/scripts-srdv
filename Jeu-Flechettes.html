@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Fléchettes — inspiré de Crazy Darts</title>
 <style>
-  body { font-family: sans-serif; max-width: 40em; margin: 1em auto; padding: 0 1em; text-align: center; touch-action: pan-y; }
+  body { font-family: sans-serif; max-width: 40em; margin: 1em auto; padding: 0 1em; text-align: center; touch-action: none; }
   h1 { font-size: 1.6em; }
   button { cursor: pointer; border-radius: .5em; }
   button:focus { outline: .25em solid #000; }
@@ -147,11 +147,29 @@ function niveauSuivant(delta) {
   selectionnerNiveau(ORDRE_NIVEAUX[suivant]);
 }
 var toucherDepart = null;
+var glisserTraite = false;
 document.addEventListener("touchstart", function (ev) {
   if (ev.touches && ev.touches.length === 1) {
     toucherDepart = { x: ev.touches[0].clientX, y: ev.touches[0].clientY };
+    glisserTraite = false;
   } else {
     toucherDepart = null;
+  }
+}, { passive: true });
+// Le glisser est détecté PENDANT le mouvement, pas seulement à la fin : si
+// le navigateur interrompait le geste (défilement de la page, par exemple),
+// l'annonce aurait déjà eu lieu. L'annonce part donc dans le geste même,
+// ce qui est aussi ce que l'iPhone exige pour ne pas l'ignorer en silence.
+document.addEventListener("touchmove", function (ev) {
+  if (!toucherDepart || glisserTraite) return;
+  if (etat !== "accueil" && etat !== "fin") return;
+  if (!ev.touches || ev.touches.length !== 1) return;
+  var dx = ev.touches[0].clientX - toucherDepart.x;
+  var dy = ev.touches[0].clientY - toucherDepart.y;
+  if (Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy)) {
+    glisserTraite = true;
+    if (dx > 0) niveauSuivant(1);
+    else niveauSuivant(-1);
   }
 }, { passive: true });
 document.addEventListener("touchend", function (ev) {
@@ -162,6 +180,7 @@ document.addEventListener("touchend", function (ev) {
   var dx = touche.clientX - toucherDepart.x;
   var dy = touche.clientY - toucherDepart.y;
   toucherDepart = null;
+  if (glisserTraite) return;  // déjà annoncé pendant le glisser
   // Un toucher sur un bouton de niveau laisse le bouton décider : son propre
   // clic lance la partie avec ce niveau-là.
   if (ev.target && ev.target.closest && ev.target.closest("#choix-niveaux button")) return;
