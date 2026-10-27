@@ -5,11 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Fléchettes — inspiré de Crazy Darts</title>
 <style>
-  body { font-family: sans-serif; max-width: 40em; margin: 1em auto; padding: 0 1em; text-align: center; }
+  body { font-family: sans-serif; max-width: 40em; margin: 1em auto; padding: 0 1em; text-align: center; touch-action: pan-y; }
   h1 { font-size: 1.6em; }
   button { cursor: pointer; border-radius: .5em; }
   button:focus { outline: .25em solid #000; }
   #choix-niveaux button { background: #1a1a1a; color: #fff; font-size: 1.8em; width: 90%; padding: 1em .5em; border: .15em solid #222; margin: .3em 0; }
+  #choix-niveaux button[aria-pressed="true"] { outline: .3em solid #ffd700; }
   #btn-lancer { background: #c82a2a; color: #fff; font-size: 2.4em; width: 95%; height: 55vh; min-height: 14em; border: .15em solid #222; display: none; text-shadow: 0 0 .2em #000; }
   #score, #statut { font-size: 1.15em; min-height: 1.4em; }
 </style>
@@ -17,16 +18,18 @@
 <body>
 <h1>Fléchettes</h1>
 <p id="score"></p>
-<p id="statut">Choisis un niveau pour jouer.</p>
+<p id="statut">Choisis un niveau pour jouer. Sans VoiceOver : glisse vers la droite pour changer de niveau, tape une fois pour jouer.</p>
 <div id="choix-niveaux">
 <button id="btn-niveau-facile">Facile</button>
 <button id="btn-niveau-moyen">Moyen</button>
 <button id="btn-niveau-difficile">Difficile</button>
+<button id="btn-niveau-tres-difficile">Très difficile</button>
+<button id="btn-niveau-extreme">Extrême</button>
 </div>
 <button id="btn-lancer" aria-label="Lancer la fléchette">Lancer</button>
-<p>Un son traverse de gauche à droite, ou de droite à gauche. Quand tu crois que le son est juste au centre, devant toi, lance ta fléchette : plus tu es près du centre, plus tu as de points. Centre parfait : 100 points. Très près : 50 points. Près : 25 points. Loin : 10 points. Si tu laisses passer le son sans lancer, la fléchette est manquée : 0 point.</p>
-<p>Trois niveaux de difficulté, selon la vitesse du son : facile, traversée lente de 5 à 8 secondes ; moyen, 3 à 6 secondes ; difficile, vraiment très vite, 1 à 2 secondes.</p>
-<p>Pour lancer : tape n'importe où sur l'écran avec 1 doigt, ou appuie sur la barre d'espace, Entrée, ou clique n'importe où sur l'ordinateur. Pour choisir un niveau au clavier : touches 1, 2, 3 pour facile, moyen, difficile. Avec VoiceOver : le focus est mis sur le gros bouton Lancer au début de chaque vol, et un double-toucher n'importe où lance la fléchette. 10 fléchettes par partie. Pour bien entendre le son aller de gauche à droite, utilise des écouteurs ou un casque : le stéréo s'entend presque pas sur le haut-parleur du téléphone.</p>
+<p>Un son traverse de gauche à droite, ou de droite à gauche. Quand tu crois que le son est juste au centre, devant toi, lance ta fléchette : plus tu es près du centre, plus tu as de points. Centre parfait : 100 points. Très près : 50 points. Près : 25 points. Loin : 10 points. Si tu laisses passer le son sans lancer, la fléchette est manquée : 0 point. À chaque vol, le son est différent : il est tiré au hasard parmi plusieurs sons, ce qui rend le repérage plus difficile.</p>
+<p>Cinq niveaux de difficulté, selon la vitesse du son : facile, traversée lente de 5 à 8 secondes ; moyen, 3 à 6 secondes ; difficile, vraiment très vite, 1 à 2 secondes ; très difficile, 0,8 à 1,5 seconde ; extrême, 0,5 à 1 seconde.</p>
+<p>Pour lancer : tape n'importe où sur l'écran avec 1 doigt, ou appuie sur la barre d'espace, Entrée, ou clique n'importe où sur l'ordinateur. Pour choisir un niveau au clavier : touches 1, 2, 3, 4, 5 pour facile, moyen, difficile, très difficile, extrême. Sans VoiceOver : glisse vers la droite pour passer au niveau suivant (la voix dit le niveau), glisse vers la gauche pour revenir en arrière, et tape une fois avec un doigt pour jouer avec le niveau annoncé. Avec VoiceOver : le focus est mis sur le gros bouton Lancer au début de chaque vol, et un double-toucher n'importe où lance la fléchette. 10 fléchettes par partie. Pour bien entendre le son aller de gauche à droite, utilise des écouteurs ou un casque : le stéréo s'entend presque pas sur le haut-parleur du téléphone.</p>
 <script>
 var NB_FLECHETTES = 10;
 var SCORE_MAX = NB_FLECHETTES * 100;  // 100 points par fléchette au maximum
@@ -34,10 +37,21 @@ var SCORE_MAX = NB_FLECHETTES * 100;  // 100 points par fléchette au maximum
 var NIVEAUX = {
   facile: { nom: "Facile", min: 5500, max: 8000 },
   moyen: { nom: "Moyen", min: 3500, max: 6500 },
-  difficile: { nom: "Difficile", min: 1000, max: 2000 }
+  difficile: { nom: "Difficile", min: 1000, max: 2000 },
+  "tres-difficile": { nom: "Très difficile", min: 800, max: 1500 },
+  extreme: { nom: "Extrême", min: 500, max: 1000 }
 };
+var ORDRE_NIVEAUX = ["facile", "moyen", "difficile", "tres-difficile", "extreme"];
 var CLE_MEILLEUR = "jeuFlechettesMeilleur";
-var FREQ_VOL = 520;  // son continu pendant le vol de la fléchette
+// Sons du vol, tirés au hasard à chaque fléchette : la variété rend le
+// repérage plus difficile que le son unique d'avant.
+var SONS_VOL = [
+  { frequence: 520, type: "sine" },
+  { frequence: 392, type: "triangle" },
+  { frequence: 659, type: "sine" },
+  { frequence: 440, type: "square" },
+  { frequence: 784, type: "sine" }
+];
 
 // Points selon la distance au centre (pan de -1 à gauche à 1 à droite, 0 = centre).
 function pointsPour(pan) {
@@ -105,7 +119,59 @@ function afficherStatut(texte) {
 function afficherBoutons() {
   document.getElementById("choix-niveaux").style.display = (etat === "accueil" || etat === "fin") ? "" : "none";
   document.getElementById("btn-lancer").style.display = (etat === "vol") ? "" : "none";
+  majSelectionVisuelle();
 }
+// Choix du niveau sans VoiceOver : glisser vers la droite passe au niveau
+// suivant (la voix l'annonce), glisser vers la gauche revient en arrière,
+// taper une fois lance la partie avec le niveau annoncé. Ces gestes ne sont
+// actifs que dans le menu (accueil ou fin de partie), jamais pendant un
+// vol : pendant le vol, taper lance la fléchette comme avant.
+function majSelectionVisuelle() {
+  ORDRE_NIVEAUX.forEach(function (niveau) {
+    var bouton = document.getElementById("btn-niveau-" + niveau);
+    if (bouton) bouton.setAttribute("aria-pressed", niveau === niveauCourant ? "true" : "false");
+  });
+  afficherScore();
+}
+function selectionnerNiveau(niveau) {
+  niveauCourant = niveau;
+  majSelectionVisuelle();
+  afficherStatut("Niveau " + NIVEAUX[niveau].nom.toLowerCase() + " sélectionné. Tape une fois pour jouer.");
+  // L'annonce est parlée dans le geste du glisser : sur iPhone, une annonce
+  // différée hors du geste peut être ignorée en silence.
+  parler("Niveau " + NIVEAUX[niveau].nom.toLowerCase() + ".");
+}
+function niveauSuivant(delta) {
+  var index = ORDRE_NIVEAUX.indexOf(niveauCourant);
+  var suivant = (index + delta + ORDRE_NIVEAUX.length) % ORDRE_NIVEAUX.length;
+  selectionnerNiveau(ORDRE_NIVEAUX[suivant]);
+}
+var toucherDepart = null;
+document.addEventListener("touchstart", function (ev) {
+  if (ev.touches && ev.touches.length === 1) {
+    toucherDepart = { x: ev.touches[0].clientX, y: ev.touches[0].clientY };
+  } else {
+    toucherDepart = null;
+  }
+}, { passive: true });
+document.addEventListener("touchend", function (ev) {
+  if (!toucherDepart) return;
+  if (etat !== "accueil" && etat !== "fin") { toucherDepart = null; return; }
+  var touche = (ev.changedTouches && ev.changedTouches[0]) || null;
+  if (!touche) { toucherDepart = null; return; }
+  var dx = touche.clientX - toucherDepart.x;
+  var dy = touche.clientY - toucherDepart.y;
+  toucherDepart = null;
+  // Un toucher sur un bouton de niveau laisse le bouton décider : son propre
+  // clic lance la partie avec ce niveau-là.
+  if (ev.target && ev.target.closest && ev.target.closest("#choix-niveaux button")) return;
+  if (Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy)) {
+    if (dx > 0) niveauSuivant(1);
+    else niveauSuivant(-1);
+  } else if (Math.abs(dx) < 15 && Math.abs(dy) < 15) {
+    demarrer(niveauCourant);
+  }
+}, { passive: true });
 // Panoramique équilibré : à gauche tout à gauche, au centre égal des deux côtés.
 function appliquerPan(pan) {
   if (!gainGauche || !gainDroit || !contexteAudio) return;
@@ -137,8 +203,9 @@ function demarrerVol() {
   gainGauche.connect(merger, 0, 0);
   gainDroit.connect(merger, 0, 1);
   oscVol = ctx.createOscillator();
-  oscVol.type = "sine";
-  oscVol.frequency.setValueAtTime(FREQ_VOL, ctx.currentTime);
+  var sonVol = SONS_VOL[Math.floor(Math.random() * SONS_VOL.length)];
+  oscVol.type = sonVol.type;
+  oscVol.frequency.setValueAtTime(sonVol.frequence, ctx.currentTime);
   var gainVol = ctx.createGain();
   gainVol.gain.setValueAtTime(0.08, ctx.currentTime);
   oscVol.connect(gainVol);
@@ -233,7 +300,7 @@ function demarrer(niveau) {
   parler("C'est parti, niveau " + NIVEAUX[niveauCourant].nom.toLowerCase() + ".", dartSuivant);
 }
 
-["facile", "moyen", "difficile"].forEach(function (niveau) {
+["facile", "moyen", "difficile", "tres-difficile", "extreme"].forEach(function (niveau) {
   document.getElementById("btn-niveau-" + niveau).addEventListener("click", function (ev) {
     // Le clic ne doit pas remonter jusqu'au lancer : sinon, choisir un niveau
     // lancerait aussitôt la première fléchette.
@@ -260,6 +327,8 @@ document.addEventListener("keydown", function (ev) {
     if (ev.key === "1") demarrer("facile");
     else if (ev.key === "2") demarrer("moyen");
     else if (ev.key === "3") demarrer("difficile");
+    else if (ev.key === "4") demarrer("tres-difficile");
+    else if (ev.key === "5") demarrer("extreme");
   }
 });
 afficherScore();
