@@ -181,9 +181,14 @@ document.addEventListener("touchend", function (ev) {
   var dy = touche.clientY - toucherDepart.y;
   toucherDepart = null;
   if (glisserTraite) return;  // déjà annoncé pendant le glisser
-  // Un toucher sur un bouton de niveau laisse le bouton décider : son propre
-  // clic lance la partie avec ce niveau-là.
-  if (ev.target && ev.target.closest && ev.target.closest("#choix-niveaux button")) return;
+  // Dans le menu, un tape lance la partie avec le niveau courant, MÊME s'il
+  // tombe sur un bouton de niveau : après une partie, les boutons couvrent
+  // presque tout l'écran, et un tape qui atterrissait sur « Moyen » lançait
+  // une partie Moyen avec décompte au lieu de reprendre le même niveau sans
+  // décompte. Le clic qui suit le tape est sans effet (la partie est déjà
+  // démarrée, le garde de demarrerAvecCompte le bloque). Un double-toucher
+  // VoiceOver, lui, ne produit pas de geste tactile : seul son clic arrive,
+  // et il choisit bien le niveau du bouton, avec décompte.
   if (Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy)) {
     if (dx > 0) niveauSuivant(1);
     else niveauSuivant(-1);
@@ -305,8 +310,8 @@ function finPartie() {
   parler(message);
 }
 function demarrer(niveau) {
-  if (niveau) niveauCourant = niveau;
   if (etat === "vol" || etat === "resultat" || etat === "demarrage" || etat === "compte") return;
+  if (niveau) niveauCourant = niveau;
   etat = "demarrage";
   audio();
   deverrouillerAudio();
@@ -339,8 +344,8 @@ function compteTick() {
   }
 }
 function demarrerAvecCompte(niveau) {
-  if (niveau) niveauCourant = niveau;
   if (etat === "vol" || etat === "resultat" || etat === "demarrage" || etat === "compte") return;
+  if (niveau) niveauCourant = niveau;
   etat = "compte";
   audio();
   deverrouillerAudio();
