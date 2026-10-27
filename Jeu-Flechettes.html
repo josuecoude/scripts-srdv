@@ -9,7 +9,7 @@
   h1 { font-size: 1.6em; }
   button { cursor: pointer; border-radius: .5em; }
   button:focus { outline: .25em solid #000; }
-  #choix-niveaux button { background: #1a1a1a; color: #fff; font-size: 1.8em; width: 90%; padding: 1em .5em; border: .15em solid #222; margin: .3em 0; }
+  #choix-niveaux button, #fin-boutons button { background: #1a1a1a; color: #fff; font-size: 1.8em; width: 90%; padding: 1em .5em; border: .15em solid #222; margin: .3em 0; }
   #choix-niveaux button[aria-pressed="true"] { outline: .3em solid #ffd700; }
   #btn-lancer { background: #c82a2a; color: #fff; font-size: 2.4em; width: 95%; height: 55vh; min-height: 14em; border: .15em solid #222; display: none; text-shadow: 0 0 .2em #000; }
   #score, #statut { font-size: 1.15em; min-height: 1.4em; }
@@ -26,10 +26,14 @@
 <button id="btn-niveau-tres-difficile">Très difficile</button>
 <button id="btn-niveau-extreme">Extrême</button>
 </div>
+<div id="fin-boutons">
+<button id="btn-rejouer">Rejouer</button>
+<button id="btn-autre-niveau">Choisir un autre niveau</button>
+</div>
 <button id="btn-lancer" aria-label="Lancer la fléchette">Lancer</button>
 <p>Un son traverse de gauche à droite, ou de droite à gauche. Quand tu crois que le son est juste au centre, devant toi, lance ta fléchette : plus tu es près du centre, plus tu as de points. Centre parfait : 100 points. Très près : 50 points. Près : 25 points. Loin : 10 points. Si tu laisses passer le son sans lancer, la fléchette est manquée : 0 point. À chaque vol, le son est différent : il est tiré au hasard parmi plusieurs sons, ce qui rend le repérage plus difficile.</p>
 <p>Cinq niveaux de difficulté, selon la vitesse du son : facile, traversée lente de 5 à 8 secondes ; moyen, 3 à 6 secondes ; difficile, vraiment très vite, 1 à 2 secondes ; très difficile, 0,8 à 1,5 seconde ; extrême, 0,5 à 1 seconde.</p>
-<p>Pour lancer : tape n'importe où sur l'écran avec 1 doigt, ou appuie sur la barre d'espace, Entrée, ou clique n'importe où sur l'ordinateur. Pour choisir un niveau au clavier : touches 1, 2, 3, 4, 5 pour facile, moyen, difficile, très difficile, extrême. Quand tu choisis un niveau avec un bouton, la partie commence 10 secondes après, pour te laisser le temps de désactiver VoiceOver. Sans VoiceOver : glisse vers la droite pour passer au niveau suivant (la voix dit le niveau), glisse vers la gauche pour revenir en arrière, et tape une fois avec un doigt pour jouer avec le niveau annoncé. Avec VoiceOver : le focus est mis sur le gros bouton Lancer au début de chaque vol, et un double-toucher n'importe où lance la fléchette. 10 fléchettes par partie. Pour bien entendre le son aller de gauche à droite, utilise des écouteurs ou un casque : le stéréo s'entend presque pas sur le haut-parleur du téléphone.</p>
+<p>Pour lancer : tape n'importe où sur l'écran avec 1 doigt, ou appuie sur la barre d'espace, Entrée, ou clique n'importe où sur l'ordinateur. Pour choisir un niveau au clavier : touches 1, 2, 3, 4, 5 pour facile, moyen, difficile, très difficile, extrême. Quand tu choisis un niveau avec un bouton, la partie commence 10 secondes après, pour te laisser le temps de désactiver VoiceOver. Après une partie, tape une fois ou appuie sur Rejouer pour rejouer aussitôt avec le même niveau, sans décompte. Sans VoiceOver : glisse vers la droite pour passer au niveau suivant (la voix dit le niveau), glisse vers la gauche pour revenir en arrière, et tape une fois avec un doigt pour jouer avec le niveau annoncé. Avec VoiceOver : le focus est mis sur le gros bouton Lancer au début de chaque vol, et un double-toucher n'importe où lance la fléchette. 10 fléchettes par partie. Pour bien entendre le son aller de gauche à droite, utilise des écouteurs ou un casque : le stéréo s'entend presque pas sur le haut-parleur du téléphone.</p>
 <script>
 var NB_FLECHETTES = 10;
 var SCORE_MAX = NB_FLECHETTES * 100;  // 100 points par fléchette au maximum
@@ -117,7 +121,8 @@ function afficherStatut(texte) {
   document.getElementById("statut").textContent = texte;
 }
 function afficherBoutons() {
-  document.getElementById("choix-niveaux").style.display = (etat === "accueil" || etat === "fin") ? "" : "none";
+  document.getElementById("choix-niveaux").style.display = (etat === "accueil") ? "" : "none";
+  document.getElementById("fin-boutons").style.display = (etat === "fin") ? "" : "none";
   document.getElementById("btn-lancer").style.display = (etat === "vol") ? "" : "none";
   majSelectionVisuelle();
 }
@@ -181,21 +186,33 @@ document.addEventListener("touchend", function (ev) {
   var dy = touche.clientY - toucherDepart.y;
   toucherDepart = null;
   if (glisserTraite) return;  // déjà annoncé pendant le glisser
-  // Dans le menu, un tape lance la partie avec le niveau courant, MÊME s'il
-  // tombe sur un bouton de niveau : après une partie, les boutons couvrent
-  // presque tout l'écran, et un tape qui atterrissait sur « Moyen » lançait
-  // une partie Moyen avec décompte au lieu de reprendre le même niveau sans
-  // décompte. Le clic qui suit le tape est sans effet (la partie est déjà
-  // démarrée, le garde de demarrerAvecCompte le bloque). Un double-toucher
-  // VoiceOver, lui, ne produit pas de geste tactile : seul son clic arrive,
-  // et il choisit bien le niveau du bouton, avec décompte.
+  // Un tape dans le menu ne démarre PAS tout de suite : on laisse 500 ms à
+  // un éventuel clic sur un bouton pour prendre le dessus. C'est nécessaire
+  // parce qu'un double-toucher VoiceOver produit aussi un geste tactile sur
+  // cet iPhone : sans ce délai, le tape démarrait aussitôt avec le niveau
+  // courant (souvent Moyen, le niveau par défaut) et le clic du bouton
+  // arrivait trop tard, bloqué par le garde. Avec le délai, le bouton choisi
+  // gagne toujours ; sans clic, la partie démarre avec le niveau courant.
   if (Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy)) {
     if (dx > 0) niveauSuivant(1);
     else niveauSuivant(-1);
   } else if (Math.abs(dx) < 15 && Math.abs(dy) < 15) {
-    demarrer(niveauCourant);
+    tapeEnAttente();
   }
 }, { passive: true });
+// Tape en attente : démarre avec le niveau courant, sauf si un clic sur un
+// bouton est arrivé entre-temps (le clic annule l'attente).
+var minuteurTape = null;
+function annulerTapeEnAttente() {
+  if (minuteurTape) { clearTimeout(minuteurTape); minuteurTape = null; }
+}
+function tapeEnAttente() {
+  annulerTapeEnAttente();
+  minuteurTape = setTimeout(function () {
+    minuteurTape = null;
+    if (etat === "accueil" || etat === "fin") demarrer(niveauCourant);
+  }, 500);
+}
 // Panoramique équilibré : à gauche tout à gauche, au centre égal des deux côtés.
 function appliquerPan(pan) {
   if (!gainGauche || !gainDroit || !contexteAudio) return;
@@ -310,6 +327,7 @@ function finPartie() {
   parler(message);
 }
 function demarrer(niveau) {
+  annulerTapeEnAttente();
   if (etat === "vol" || etat === "resultat" || etat === "demarrage" || etat === "compte") return;
   if (niveau) niveauCourant = niveau;
   etat = "demarrage";
@@ -344,6 +362,7 @@ function compteTick() {
   }
 }
 function demarrerAvecCompte(niveau) {
+  annulerTapeEnAttente();
   if (etat === "vol" || etat === "resultat" || etat === "demarrage" || etat === "compte") return;
   if (niveau) niveauCourant = niveau;
   etat = "compte";
@@ -355,7 +374,9 @@ function demarrerAvecCompte(niveau) {
   afficherBoutons();
   compteRestant = 10;
   afficherStatut(compteTexte());
-  parler("La partie commence dans 10 secondes. Désactive VoiceOver.");
+  // L'annonce nomme le niveau : même si le choix vient d'un tape tombé sur
+  // un bouton, le joueur sait avec quel niveau la partie va commencer.
+  parler("Niveau " + NIVEAUX[niveauCourant].nom.toLowerCase() + ". La partie commence dans 10 secondes. Désactive VoiceOver.");
   compteInterval = setInterval(compteTick, 1000);
 }
 
@@ -364,8 +385,27 @@ function demarrerAvecCompte(niveau) {
     // Le clic ne doit pas remonter jusqu'au lancer : sinon, choisir un niveau
     // lancerait aussitôt la première fléchette.
     ev.stopPropagation();
+    // Le clic d'un bouton annule le tape en attente : c'est le bouton choisi
+    // qui gagne, pas le niveau courant du tape.
+    annulerTapeEnAttente();
     demarrerAvecCompte(niveau);
   });
+});
+// Après une partie : « Rejouer » relance aussitôt avec le même niveau, sans
+// décompte ; « Choisir un autre niveau » revient au menu des niveaux.
+document.getElementById("btn-rejouer").addEventListener("click", function (ev) {
+  ev.stopPropagation();
+  annulerTapeEnAttente();
+  demarrer(niveauCourant);
+});
+document.getElementById("btn-autre-niveau").addEventListener("click", function (ev) {
+  ev.stopPropagation();
+  annulerTapeEnAttente();
+  if (etat !== "fin") return;
+  etat = "accueil";
+  afficherScore();
+  afficherStatut("Choisis un niveau pour jouer. Après ton choix, la partie commence dans 10 secondes, pour te laisser le temps de désactiver VoiceOver. Sans VoiceOver : glisse vers la droite pour changer de niveau, tape une fois pour jouer.");
+  afficherBoutons();
 });
 document.getElementById("btn-lancer").addEventListener("click", function (ev) {
   ev.stopPropagation();
